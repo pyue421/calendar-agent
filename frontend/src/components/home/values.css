@@ -12,23 +12,32 @@
   margin-bottom: 0;
 }
 
-.values-view-select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 5px 28px 5px 10px;
-  font-size: 13px;
-  color: #000000;
-  background-color: #efefef;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6l6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-size: 12px 12px;
-  background-position: right 8px center;
+.values-view-toggle {
+  display: flex;
+  align-items: center;
+  background: #ebf0f5;
+  border-radius: 20px;
+  padding: 4px;
+  gap: 0;
+  height: 32px;
+}
+
+.values-view-btn {
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 20px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
   font-family: inherit;
+  color: #3a3a3a;
   cursor: pointer;
-  min-width: 120px;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+
+.values-view-btn.active {
+  background: white;
 }
 
 .values-list-wrap {

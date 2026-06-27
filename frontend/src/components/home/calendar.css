@@ -1,10 +1,11 @@
 .home-calendar-card {
+  flex: 1;
+  min-width: 0;
   background: var(--home-card);
   border: 1px solid var(--home-border);
   border-radius: 22px;
   box-shadow: 0 18px 44px rgba(42, 79, 120, 0.12);
   padding: 0;
-  padding-bottom: 0;
   overflow: hidden;
   backdrop-filter: blur(2px);
   animation: home-in 0.45s ease both;
@@ -304,6 +305,11 @@
   background: #ffffff;
   border-color: #6e85ef;
   color: #3A3A3A;
+}
+
+.calendar-drag-ghost {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  transform: scale(1.02);
 }
 
 @media (max-width: 760px) {
