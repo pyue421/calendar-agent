@@ -1,24 +1,41 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
+import { useSession } from "../../services/SessionContext"
 import "./calendar.css"
 
 const ROW_HEIGHT = 64
 const HOURS = Array.from({ length: 24 }, (_, idx) => idx)
 const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
-const INITIAL_EVENTS = [
-  { id: "e1", title: "Team Meeting", dayIndex: 0, start: "09:00", end: "10:30", tone: "purple" },
-  { id: "e2", title: "Aviation Practice", dayIndex: 1, start: "11:00", end: "12:30", tone: "blue" },
-  { id: "e3", title: "Activity", dayIndex: 2, start: "12:00", end: "13:30", tone: "purple" },
-  { id: "e4", title: "Aviation Practice", dayIndex: 4, start: "09:00", end: "10:30", tone: "blue" },
-]
+// Map backend snake_case event to frontend camelCase
+function mapEvent(ev) {
+  return {
+    id: ev.id,
+    title: ev.title,
+    dayIndex: ev.day_index ?? ev.dayIndex ?? 0,
+    start: ev.start,
+    end: ev.end,
+    tone: ev.tone || "blue",
+    category: ev.category || "work",
+    isNew: ev.is_new ?? ev.isNew ?? false,
+  }
+}
 
 export default function CalendarPanel() {
+  const { calendarEvents, sendCalendarAction } = useSession()
+
   const [weekOffset, setWeekOffset] = useState(0)
-  const [events, setEvents] = useState(INITIAL_EVENTS)
+  const [events, setEvents] = useState([])
   const [dragging, setDragging] = useState(null)
   const scrollerRef = useRef(null)
   const daysColumnsRef = useRef(null)
   const ghostRef = useRef(null)
+
+  // Sync events from session context
+  useEffect(() => {
+    if (calendarEvents && calendarEvents.length > 0) {
+      setEvents(calendarEvents.map(mapEvent))
+    }
+  }, [calendarEvents])
 
   const weekStart = useMemo(() => {
     const base = startOfWeekMonday(new Date())
@@ -53,18 +70,36 @@ export default function CalendarPanel() {
         const relX = e.clientX - colsRect.left
         const relY = e.clientY - colsRect.top + scrollTop - dragging.offsetY
         const colWidth = colsRect.width / 5
-        const dayIndex = Math.max(0, Math.min(4, Math.floor(relX / colWidth)))
+        const newDayIndex = Math.max(0, Math.min(4, Math.floor(relX / colWidth)))
         const rawStartMinute = Math.round((relY / ROW_HEIGHT) * 60)
         const startMinute = Math.max(0, Math.round(rawStartMinute / 15) * 15)
         const duration = toMinutes(dragging.event.end) - toMinutes(dragging.event.start)
         const endMinute = Math.min(startMinute + duration, 24 * 60)
+
+        const newStart = minutesToTime(startMinute)
+        const newEnd = minutesToTime(endMinute)
+        const oldEvent = dragging.event
+
+        // Update local state immediately
         setEvents((evs) =>
           evs.map((ev) =>
-            ev.id === dragging.event.id
-              ? { ...ev, dayIndex, start: minutesToTime(startMinute), end: minutesToTime(endMinute) }
+            ev.id === oldEvent.id
+              ? { ...ev, dayIndex: newDayIndex, start: newStart, end: newEnd }
               : ev
           )
         )
+
+        // Log behavioral signal to backend
+        if (sendCalendarAction) {
+          sendCalendarAction("reschedule", oldEvent.id, {
+            original_day: oldEvent.dayIndex,
+            original_start: oldEvent.start,
+            original_end: oldEvent.end,
+            new_day_index: newDayIndex,
+            new_start: newStart,
+            new_end: newEnd,
+          }).catch((err) => console.error("Failed to log calendar action:", err))
+        }
       }
       setDragging(null)
     }
@@ -200,7 +235,7 @@ export default function CalendarPanel() {
                       return (
                         <article
                           key={event.id}
-                          className={`calendar-event-card calendar-event-${event.tone}`}
+                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}`}
                           style={{
                             top: `${(startMinutes / 60) * ROW_HEIGHT}px`,
                             height: `${(duration / 60) * ROW_HEIGHT}px`,

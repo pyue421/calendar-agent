@@ -1,0 +1,229 @@
+{
+  "id": "sess_a7d43e7f",
+  "participant_id": "participant_1783111504193",
+  "created_at": 1783111504.3183262,
+  "current_round": 1,
+  "rounds": [
+    {
+      "round_num": 1,
+      "phase": "exploration",
+      "status": "scenario_presented",
+      "scenario": {
+        "round_num": 1,
+        "phase": "exploration",
+        "emails": [
+          {
+            "id": "email_23e1f9f9",
+            "sender": "David Chen <david.chen@example.com>",
+            "subject": "Q4 Strategy Session - Your Input Needed",
+            "body": "Hi [Participant Name],\n\nWe're convening a critical strategy session to finalize our Q4 initiatives for the new product line. Your insights are essential for shaping our approach, especially given your recent contributions. We're looking at Wednesday morning, 7:30 AM - 8:30 AM, as the best window to get key stakeholders together. Please confirm your availability or suggest an alternative if absolutely necessary.",
+            "requires_scheduling": true,
+            "proposed_event": {
+              "id": "evt_2e146d83",
+              "title": "Q4 Strategy Session",
+              "day_index": 2,
+              "start": "07:30",
+              "end": "08:30",
+              "tone": "purple",
+              "category": "work",
+              "description": "Critical planning for new product line with key stakeholders.",
+              "source": "conflict_architect",
+              "is_movable": true,
+              "is_new": true,
+              "metadata": {}
+            },
+            "value_tensions": [
+              "Work-life boundaries vs. career ambition",
+              "Personal health vs. professional growth",
+              "Autonomy vs. collaboration"
+            ],
+            "round_num": 1
+          }
+        ],
+        "injected_events": [
+          {
+            "id": "evt_2e146d83",
+            "title": "Q4 Strategy Session",
+            "day_index": 2,
+            "start": "07:30",
+            "end": "08:30",
+            "tone": "purple",
+            "category": "work",
+            "description": "Critical planning for new product line with key stakeholders.",
+            "source": "conflict_architect",
+            "is_movable": true,
+            "is_new": true,
+            "metadata": {}
+          }
+        ],
+        "intended_tensions": [
+          "Work-life boundaries vs. career ambition",
+          "Personal health vs. professional growth"
+        ],
+        "difficulty": "moderate",
+        "targeting_rationale": "This scenario targets the tension between professional advancement/team commitment and personal well-being/work-life balance. The proposed early morning work meeting directly conflicts with an existing, user-scheduled health activity (Gym), forcing a trade-off. The 'critical' nature and 'essential insights' from a senior leader raise the stakes for career ambition, while the existing gym slot represents a commitment to personal health. This provides a clear, moderate-difficulty dilemma for early exploration of values."
+      },
+      "behavioral_signals": [],
+      "conversational_signals": [],
+      "debate_record": null,
+      "reflection_prompt": null,
+      "reflection_response": null,
+      "is_reflection_round": false
+    }
+  ],
+  "calendar_events": [
+    {
+      "id": "evt_default_1",
+      "title": "Team Standup",
+      "day_index": 0,
+      "start": "09:00",
+      "end": "09:30",
+      "tone": "purple",
+      "category": "work",
+      "description": "Daily team sync",
+      "source": "system",
+      "is_movable": false,
+      "is_new": false,
+      "metadata": {}
+    },
+    {
+      "id": "evt_default_2",
+      "title": "Deep Work Block",
+      "day_index": 0,
+      "start": "10:00",
+      "end": "12:00",
+      "tone": "blue",
+      "category": "work",
+      "description": "Protected focus time",
+      "source": "user",
+      "is_movable": true,
+      "is_new": false,
+      "metadata": {}
+    },
+    {
+      "id": "evt_default_3",
+      "title": "Lunch with Sarah",
+      "day_index": 1,
+      "start": "12:00",
+      "end": "13:00",
+      "tone": "amber",
+      "category": "social",
+      "description": "Catch up lunch",
+      "source": "user",
+      "is_movable": true,
+      "is_new": false,
+      "metadata": {}
+    },
+    {
+      "id": "evt_default_4",
+      "title": "1:1 with Manager",
+      "day_index": 1,
+      "start": "14:00",
+      "end": "14:45",
+      "tone": "purple",
+      "category": "work",
+      "description": "Weekly check-in",
+      "source": "system",
+      "is_movable": false,
+      "is_new": false,
+      "metadata": {}
+    },
+    {
+      "id": "evt_default_5",
+      "title": "Gym — Strength Training",
+      "day_index": 2,
+      "start": "07:00",
+      "end": "08:00",
+      "tone": "green",
+      "category": "health",
+      "description": "Morning workout",
+      "source": "user",
+      "is_movable": true,
+      "is_new": false,
+      "metadata": {}
+    },
+    {
+      "id": "evt_default_6",
+      "title": "Project Review",
+      "day_index": 2,
+      "start": "14:00",
+      "end": "15:30",
+      "tone": "purple",
+      "category": "work",
+      "description": "Q3 project review with stakeholders",
+      "source": "system",
+      "is_movable": true,
+      "is_new": false,
+      "metadata": {}
+    },
+    {
+      "id": "evt_default_7",
+      "title": "Team Standup",
+      "day_index": 3,
+      "start": "09:00",
+      "end": "09:30",
+      "tone": "purple",
+      "category": "work",
+      "description": "Daily team sync",
+      "source": "system",
+      "is_movable": false,
+      "is_new": false,
+      "metadata": {}
+    },
+    {
+      "id": "evt_default_8",
+      "title": "Piano Lesson",
+      "day_index": 3,
+      "start": "18:00",
+      "end": "19:00",
+      "tone": "blue",
+      "category": "personal",
+      "description": "Weekly piano lesson",
+      "source": "user",
+      "is_movable": true,
+      "is_new": false,
+      "metadata": {}
+    },
+    {
+      "id": "evt_default_9",
+      "title": "Sprint Planning",
+      "day_index": 4,
+      "start": "10:00",
+      "end": "11:30",
+      "tone": "purple",
+      "category": "work",
+      "description": "Bi-weekly sprint planning",
+      "source": "system",
+      "is_movable": true,
+      "is_new": false,
+      "metadata": {}
+    },
+    {
+      "id": "evt_default_10",
+      "title": "Gym — Cardio",
+      "day_index": 4,
+      "start": "17:00",
+      "end": "18:00",
+      "tone": "green",
+      "category": "health",
+      "description": "Evening run / cycling",
+      "source": "user",
+      "is_movable": true,
+      "is_new": false,
+      "metadata": {}
+    }
+  ],
+  "value_ledger": {
+    "hypotheses": [],
+    "evidence": []
+  },
+  "debate_history": [],
+  "chat_history": [
+    {
+      "role": "assistant",
+      "content": "Hi there! You've received a new meeting request from David Chen for a critical Q4 Strategy Session. Your insights are essential for shaping the new product line's initiatives.\n\nThe proposed time is Wednesday morning, 7:30 AM - 8:30 AM. This conflicts with the first 30 minutes of your \"Gym — Strength Training\" session from 7:30 AM - 8:00 AM.\n\nWhat would you like to do?\n1.  Accept the Q4 Strategy Session and move/cancel Gym.\n2.  Decline the Q4 Strategy Session and suggest an alternative time.\n3.  Decline the Q4 Strategy Session without suggesting an alternative."
+    }
+  ],
+  "pre_study_values": [],
+  "post_study_values": []
+}

@@ -4,8 +4,32 @@ import os
 from pathlib import Path
 
 # ── API ──────────────────────────────────────────────────────────────
+# Provider: "anthropic" | "google" | auto-detected from available keys
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").lower()
+
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+GOOGLE_MODEL = os.getenv("GOOGLE_MODEL", "gemini-2.0-flash")
+
+# Mock mode: run the full pipeline with canned responses (no API key needed).
+# Tests plumbing only — NOT inference quality.
+USE_MOCK_LLM = os.getenv("USE_MOCK_LLM", "").lower() in ("true", "1", "yes")
+
+
+def resolve_provider() -> str:
+    """Determine which LLM provider to use based on config and available keys."""
+    if USE_MOCK_LLM:
+        return "mock"
+    if LLM_PROVIDER in ("anthropic", "google"):
+        return LLM_PROVIDER
+    # Auto-detect from available keys
+    if ANTHROPIC_API_KEY:
+        return "anthropic"
+    if GOOGLE_API_KEY:
+        return "google"
+    return "mock"
 
 # ── Server ───────────────────────────────────────────────────────────
 BACKEND_HOST = os.getenv("BACKEND_HOST", "127.0.0.1")
@@ -45,5 +69,11 @@ def load_env():
         if key and key not in os.environ:
             os.environ[key] = value
     # Re-read after loading
-    global ANTHROPIC_API_KEY
+    global ANTHROPIC_API_KEY, GOOGLE_API_KEY, LLM_PROVIDER, USE_MOCK_LLM
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").lower()
+    USE_MOCK_LLM = os.getenv("USE_MOCK_LLM", "").lower() in ("true", "1", "yes")
+    # Auto-enable mock mode if no key from any provider is present
+    if not ANTHROPIC_API_KEY and not GOOGLE_API_KEY:
+        USE_MOCK_LLM = True

@@ -1,22 +1,44 @@
 import React from "react"
+import SessionProvider, { useSession } from "../services/SessionContext"
 import ChatbotPanel from "../components/home/ChatbotPanel"
 import CalendarPanel from "../components/home/calendar"
 import ValuesPanel from "../components/home/values"
 import GoalsPanel from "../components/home/GoalsPanel"
-import { valueWeights } from "../components/home/data"
 import "../components/home/home-layout.css"
 
-export default function Home() {
+function HomeContent() {
+  const { valueWeights } = useSession()
+
+  // Fallback to default weights if none from backend yet
+  const weights =
+    valueWeights && valueWeights.length > 0
+      ? valueWeights
+      : [
+          { label: "Discovering…", weight: 20, tone: "green" },
+          { label: "Your", weight: 20, tone: "rose" },
+          { label: "Values", weight: 20, tone: "amber" },
+          { label: "Through", weight: 20, tone: "cyan" },
+          { label: "Actions", weight: 20, tone: "violet" },
+        ]
+
   return (
     <div className="home-page">
       <div className="home-shell">
         <ChatbotPanel />
         <CalendarPanel />
         <div className="home-right-column">
-          <ValuesPanel valueWeights={valueWeights} />
+          <ValuesPanel valueWeights={weights} />
           <GoalsPanel />
         </div>
       </div>
     </div>
+  )
+}
+
+export default function Home() {
+  return (
+    <SessionProvider>
+      <HomeContent />
+    </SessionProvider>
   )
 }
