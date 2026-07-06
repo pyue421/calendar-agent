@@ -18,7 +18,6 @@ export default function ChatbotPanel() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
-  const [mode, setMode] = useState("agent")
   const [roundActive, setRoundActive] = useState(false)
   const scrollRef = useRef(null)
 
@@ -175,33 +174,6 @@ export default function ChatbotPanel() {
               </span>
             )}
           </span>
-        </div>
-        <div className="chatbot-mode-group">
-          <button
-            type="button"
-            className={`chatbot-mode-btn${mode === "agent" ? " active" : ""}`}
-            onClick={() => setMode("agent")}
-            aria-label="Agent mode"
-          >
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden>
-              <rect x="2" y="5" width="12" height="9" rx="2" stroke="currentColor" strokeWidth="1.4" />
-              <path d="M5 5V3.5a3 3 0 016 0V5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-              <circle cx="5.5" cy="9.5" r="1" fill="currentColor" />
-              <circle cx="10.5" cy="9.5" r="1" fill="currentColor" />
-              <path d="M6 12h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className={`chatbot-mode-btn${mode === "email" ? " active" : ""}`}
-            onClick={() => setMode("email")}
-            aria-label="Email mode"
-          >
-            <svg viewBox="0 0 16 16" fill="none" aria-hidden>
-              <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-              <path d="M1.5 4l6.5 5 6.5-5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-          </button>
         </div>
       </header>
 

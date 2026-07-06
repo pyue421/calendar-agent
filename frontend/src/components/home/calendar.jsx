@@ -26,9 +26,10 @@ export default function CalendarPanel() {
   const [weekOffset, setWeekOffset] = useState(0)
   const [events, setEvents] = useState([])
   const [dragging, setDragging] = useState(null)
+  const [dragPreview, setDragPreview] = useState(null)
   const scrollerRef = useRef(null)
   const daysColumnsRef = useRef(null)
-  const ghostRef = useRef(null)
+  const dragPreviewRef = useRef(null)
 
   // Sync events from session context
   useEffect(() => {
@@ -56,35 +57,46 @@ export default function CalendarPanel() {
   useEffect(() => {
     if (!dragging) return
 
+    const duration = toMinutes(dragging.event.end) - toMinutes(dragging.event.start)
+
+    function computeSnappedSlot(e) {
+      if (!daysColumnsRef.current) return null
+      const colsRect = daysColumnsRef.current.getBoundingClientRect()
+      // colsRect.top is live viewport-relative and already reflects the
+      // current scroll position of .calendar-scroll, so no extra scrollTop
+      // adjustment is needed here.
+      const relX = e.clientX - colsRect.left
+      const relY = e.clientY - colsRect.top - dragging.offsetY
+      const colWidth = colsRect.width / 5
+      const dayIndex = Math.max(0, Math.min(4, Math.floor(relX / colWidth)))
+      const rawStartMinute = Math.round((relY / ROW_HEIGHT) * 60)
+      // Snap to the nearest 15-minute mark, like Google Calendar
+      let startMinute = Math.round(rawStartMinute / 15) * 15
+      startMinute = Math.max(0, Math.min(startMinute, 24 * 60 - duration))
+      const endMinute = startMinute + duration
+      return { dayIndex, startMinute, endMinute }
+    }
+
     function onMouseMove(e) {
-      if (ghostRef.current) {
-        ghostRef.current.style.left = `${e.clientX - 60}px`
-        ghostRef.current.style.top = `${e.clientY - dragging.offsetY}px`
+      const slot = computeSnappedSlot(e)
+      if (slot) {
+        dragPreviewRef.current = slot
+        setDragPreview(slot)
       }
     }
 
     function onMouseUp(e) {
-      if (daysColumnsRef.current && scrollerRef.current) {
-        const colsRect = daysColumnsRef.current.getBoundingClientRect()
-        const scrollTop = scrollerRef.current.scrollTop
-        const relX = e.clientX - colsRect.left
-        const relY = e.clientY - colsRect.top + scrollTop - dragging.offsetY
-        const colWidth = colsRect.width / 5
-        const newDayIndex = Math.max(0, Math.min(4, Math.floor(relX / colWidth)))
-        const rawStartMinute = Math.round((relY / ROW_HEIGHT) * 60)
-        const startMinute = Math.max(0, Math.round(rawStartMinute / 15) * 15)
-        const duration = toMinutes(dragging.event.end) - toMinutes(dragging.event.start)
-        const endMinute = Math.min(startMinute + duration, 24 * 60)
-
-        const newStart = minutesToTime(startMinute)
-        const newEnd = minutesToTime(endMinute)
+      const slot = computeSnappedSlot(e) || dragPreviewRef.current
+      if (slot) {
+        const newStart = minutesToTime(slot.startMinute)
+        const newEnd = minutesToTime(slot.endMinute)
         const oldEvent = dragging.event
 
         // Update local state immediately
         setEvents((evs) =>
           evs.map((ev) =>
             ev.id === oldEvent.id
-              ? { ...ev, dayIndex: newDayIndex, start: newStart, end: newEnd }
+              ? { ...ev, dayIndex: slot.dayIndex, start: newStart, end: newEnd }
               : ev
           )
         )
@@ -95,12 +107,14 @@ export default function CalendarPanel() {
             original_day: oldEvent.dayIndex,
             original_start: oldEvent.start,
             original_end: oldEvent.end,
-            new_day_index: newDayIndex,
+            new_day_index: slot.dayIndex,
             new_start: newStart,
             new_end: newEnd,
           }).catch((err) => console.error("Failed to log calendar action:", err))
         }
       }
+      dragPreviewRef.current = null
+      setDragPreview(null)
       setDragging(null)
     }
 
@@ -131,32 +145,8 @@ export default function CalendarPanel() {
     }
   }
 
-  const draggingDuration = dragging
-    ? toMinutes(dragging.event.end) - toMinutes(dragging.event.start)
-    : 0
-
   return (
     <>
-      {dragging && (
-        <div
-          ref={ghostRef}
-          className={`calendar-event-card calendar-event-${dragging.event.tone} calendar-drag-ghost`}
-          style={{
-            position: "fixed",
-            left: "-9999px",
-            top: "-9999px",
-            width: "140px",
-            height: `${(draggingDuration / 60) * ROW_HEIGHT}px`,
-            zIndex: 9999,
-            pointerEvents: "none",
-            opacity: 0.85,
-          }}
-        >
-          <strong>{dragging.event.title}</strong>
-          <span>{formatEventTime(dragging.event.start, dragging.event.end)}</span>
-        </div>
-      )}
-
       <section className="home-calendar-card">
         <header className="calendar-topbar">
           <div className="calendar-top-left">
@@ -223,19 +213,16 @@ export default function CalendarPanel() {
                   ))}
 
                   {events
-                    .filter(
-                      (event) =>
-                        event.dayIndex === dayIndex &&
-                        !(dragging && dragging.event.id === event.id)
-                    )
+                    .filter((event) => event.dayIndex === dayIndex)
                     .map((event) => {
+                      const isDragSource = dragging && dragging.event.id === event.id
                       const startMinutes = toMinutes(event.start)
                       const endMinutes = toMinutes(event.end)
                       const duration = endMinutes - startMinutes
                       return (
                         <article
                           key={event.id}
-                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}`}
+                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}${isDragSource ? " calendar-event-drag-source" : ""}`}
                           style={{
                             top: `${(startMinutes / 60) * ROW_HEIGHT}px`,
                             height: `${(duration / 60) * ROW_HEIGHT}px`,
@@ -248,6 +235,24 @@ export default function CalendarPanel() {
                         </article>
                       )
                     })}
+
+                  {dragging && dragPreview && dragPreview.dayIndex === dayIndex && (
+                    <div
+                      className={`calendar-event-card calendar-event-${dragging.event.tone} calendar-drag-preview`}
+                      style={{
+                        top: `${(dragPreview.startMinute / 60) * ROW_HEIGHT}px`,
+                        height: `${((dragPreview.endMinute - dragPreview.startMinute) / 60) * ROW_HEIGHT}px`,
+                      }}
+                    >
+                      <strong>{dragging.event.title}</strong>
+                      <span>
+                        {formatEventTime(
+                          minutesToTime(dragPreview.startMinute),
+                          minutesToTime(dragPreview.endMinute)
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

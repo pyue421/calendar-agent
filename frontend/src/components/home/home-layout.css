@@ -39,11 +39,12 @@
 
 .home-right-column > .home-values-card {
   border-bottom: 1px solid #dee5eb;
-  flex: 0 0 318px;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .home-right-column > .goals-panel {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
 }

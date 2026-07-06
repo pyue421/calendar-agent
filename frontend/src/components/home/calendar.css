@@ -3,8 +3,6 @@
   min-width: 0;
   background: var(--home-card);
   border: 1px solid var(--home-border);
-  border-radius: 22px;
-  box-shadow: 0 18px 44px rgba(42, 79, 120, 0.12);
   padding: 0;
   overflow: hidden;
   backdrop-filter: blur(2px);
@@ -307,9 +305,18 @@
   color: #3A3A3A;
 }
 
-.calendar-drag-ghost {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  transform: scale(1.02);
+.calendar-event-drag-source {
+  opacity: 0.55;
+}
+
+.calendar-drag-preview {
+  z-index: 5;
+  opacity: 0.9;
+  border-width: 2px;
+  border-style: dashed;
+  box-shadow: 0 8px 20px rgba(17, 24, 39, 0.16);
+  pointer-events: none;
+  transition: top 0.05s linear, height 0.05s linear;
 }
 
 @media (max-width: 760px) {
