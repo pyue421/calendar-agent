@@ -114,6 +114,14 @@ DEFAULT_EVENTS = [
     ),
 ]
 
+# Every default event's "suggested" time starts out as wherever it was
+# originally seeded, so dragging one and later reverting it works the same
+# way as it does for chatbot-suggested events.
+for _event in DEFAULT_EVENTS:
+    _event.metadata["suggested_day_index"] = _event.day_index
+    _event.metadata["suggested_start"] = _event.start
+    _event.metadata["suggested_end"] = _event.end
+
 
 class SessionManager:
     """Orchestrates a complete DISCOVER experimental session."""
@@ -129,7 +137,10 @@ class SessionManager:
         """Create a new experimental session."""
         session = Session(
             participant_id=participant_id,
-            calendar_events=list(DEFAULT_EVENTS),  # Copy defaults
+            # Deep-copy — DEFAULT_EVENTS are shared module-level instances,
+            # and calendar actions mutate events in place (title, day_index,
+            # metadata), so a shallow copy would leak edits across sessions.
+            calendar_events=[e.model_copy(deep=True) for e in DEFAULT_EVENTS],
         )
         _sessions[session.id] = session
         logger.info(f"Created session {session.id} for participant {participant_id}")

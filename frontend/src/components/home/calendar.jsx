@@ -177,33 +177,40 @@ export default function CalendarPanel() {
     setSelectedEvent(null)
   }
 
-  function handleUseSuggestedTime(event) {
-    const meta = event.metadata || {}
-    if (meta.suggested_start === undefined) return
-    const newDayIndex = meta.suggested_day_index
-    const newStart = meta.suggested_start
-    const newEnd = meta.suggested_end
-
+  function handleRescheduleEvent(event, { dayIndex, start, end }) {
     setEvents((evs) =>
-      evs.map((ev) =>
-        ev.id === event.id
-          ? { ...ev, dayIndex: newDayIndex, start: newStart, end: newEnd }
-          : ev
-      )
+      evs.map((ev) => (ev.id === event.id ? { ...ev, dayIndex, start, end } : ev))
     )
-
     if (sendCalendarAction) {
       sendCalendarAction("reschedule", event.id, {
         original_day: event.dayIndex,
         original_start: event.start,
         original_end: event.end,
-        new_day_index: newDayIndex,
-        new_start: newStart,
-        new_end: newEnd,
-      }).catch((err) => console.error("Failed to restore suggested time:", err))
+        new_day_index: dayIndex,
+        new_start: start,
+        new_end: end,
+      }).catch((err) => console.error("Failed to reschedule event:", err))
     }
+  }
 
+  function handleUseSuggestedTime(event) {
+    const meta = event.metadata || {}
+    if (meta.suggested_start === undefined) return
+    handleRescheduleEvent(event, {
+      dayIndex: meta.suggested_day_index,
+      start: meta.suggested_start,
+      end: meta.suggested_end,
+    })
     setSelectedEvent(null)
+  }
+
+  function handleRetitleEvent(event, title) {
+    setEvents((evs) => evs.map((ev) => (ev.id === event.id ? { ...ev, title } : ev)))
+    if (sendCalendarAction) {
+      sendCalendarAction("modify", event.id, { title }).catch((err) =>
+        console.error("Failed to update event title:", err)
+      )
+    }
   }
 
   function goToday() {
@@ -336,6 +343,8 @@ export default function CalendarPanel() {
             onClose={() => setSelectedEvent(null)}
             onUseSuggestedTime={() => handleUseSuggestedTime(selectedEvent.event)}
             onRemove={() => handleRemoveEvent(selectedEvent.event)}
+            onRetitle={(title) => handleRetitleEvent(selectedEvent.event, title)}
+            onReschedule={(fields) => handleRescheduleEvent(selectedEvent.event, fields)}
           />,
           document.body
         )}
@@ -343,13 +352,33 @@ export default function CalendarPanel() {
   )
 }
 
-function EventDetailModal({ event, anchorRect, onClose, onUseSuggestedTime, onRemove }) {
+function EventDetailModal({ event, anchorRect, onClose, onUseSuggestedTime, onRemove, onRetitle, onReschedule }) {
   const meta = event.metadata || {}
-  const hasSuggestion =
-    meta.suggested_start !== undefined &&
-    (meta.suggested_day_index !== event.dayIndex ||
-      meta.suggested_start !== event.start ||
-      meta.suggested_end !== event.end)
+  const hasSuggestion = meta.suggested_start !== undefined
+
+  const [title, setTitle] = useState(event.title)
+  const [dayIndex, setDayIndex] = useState(event.dayIndex)
+  const [start, setStart] = useState(event.start)
+  const [end, setEnd] = useState(event.end)
+
+  function commitTitle() {
+    if (title.trim() && title !== event.title) onRetitle(title.trim())
+  }
+
+  function updateDayIndex(next) {
+    setDayIndex(next)
+    onReschedule({ dayIndex: next, start, end })
+  }
+
+  function updateStart(next) {
+    setStart(next)
+    onReschedule({ dayIndex, start: next, end })
+  }
+
+  function updateEnd(next) {
+    setEnd(next)
+    onReschedule({ dayIndex, start, end: next })
+  }
 
   const modalWidth = 300
   const gap = 14
@@ -367,19 +396,43 @@ function EventDetailModal({ event, anchorRect, onClose, onUseSuggestedTime, onRe
       <div className="event-modal" style={{ top, left, width: modalWidth }}>
         <div className="meeting-field">
           <label className="meeting-field-label">Title of the meeting</label>
-          <input className="meeting-field-input" type="text" value={event.title} disabled />
+          <input
+            className="meeting-field-input"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={commitTitle}
+          />
         </div>
         <div className="meeting-field-row">
           <div className="meeting-field meeting-field-date">
             <label className="meeting-field-label">Date</label>
-            <input className="meeting-field-input" type="text" value={WEEKDAY_NAMES[event.dayIndex]} disabled />
+            <select
+              className="meeting-field-input meeting-field-select"
+              value={dayIndex}
+              onChange={(e) => updateDayIndex(Number(e.target.value))}
+            >
+              {WEEKDAY_NAMES.map((name, idx) => (
+                <option key={name} value={idx}>{name}</option>
+              ))}
+            </select>
           </div>
           <div className="meeting-field">
             <label className="meeting-field-label">Time</label>
             <div className="meeting-time-range">
-              <input className="meeting-field-input" type="text" value={toDisplayTime(event.start)} disabled />
+              <input
+                className="meeting-field-input"
+                type="time"
+                value={start}
+                onChange={(e) => updateStart(e.target.value)}
+              />
               <span className="meeting-time-sep">–</span>
-              <input className="meeting-field-input" type="text" value={toDisplayTime(event.end)} disabled />
+              <input
+                className="meeting-field-input"
+                type="time"
+                value={end}
+                onChange={(e) => updateEnd(e.target.value)}
+              />
             </div>
           </div>
         </div>
@@ -467,7 +520,7 @@ function toDisplayTime(hhmm) {
   const [hh, mm] = hhmm.split(":").map(Number)
   const suffix = hh >= 12 ? "PM" : "AM"
   const hour12 = hh % 12 === 0 ? 12 : hh % 12
-  return `${hour12}:${String(mm).padStart(2, "0")} ${suffix}`
+  return `${hour12}:${String(mm).padStart(2, "0")}${suffix}`
 }
 
 function isSameDate(a, b) {
