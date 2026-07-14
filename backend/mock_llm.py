@@ -67,8 +67,10 @@ _JSON_RESPONSES = {
 
 _TEXT_RESPONSES = {
     "scheduling_assistant": (
-        "Thanks for letting me know! I've noted your preference. "
-        "(This is a mock response — no real LLM call was made.)"
+        "You've got a new request — Jordan asked about a quick roadmap sync "
+        "tomorrow. It overlaps with your protected focus time. Take a look at "
+        "the details below and let me know whether to accept or reject it. "
+        "(Mock response — no real LLM call was made.)"
     ),
     "synthesizer": (
         "I noticed a scheduling choice come up this round — would you say "

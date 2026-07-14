@@ -71,6 +71,8 @@ export default function SessionProvider({ children }) {
       const data = await res.json()
       setCurrentRound(data.round)
       setPhase(data.phase)
+      // Proposed events stay pending (shown only in the chat's meeting card)
+      // until the user accepts them via sendCalendarAction — see MeetingCard.
       if (data.existing_events) setCalendarEvents(data.existing_events)
       return data
     } finally {

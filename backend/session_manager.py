@@ -282,19 +282,35 @@ class SessionManager:
             round_obj.behavioral_signals.append(signal)
             round_obj.status = RoundStatus.IN_PROGRESS
 
-        # Apply the action
+        # Apply the action. Accept/decline are toggleable — the participant
+        # can change their mind, so neither is removed from the scenario's
+        # injected_events (that would make the opposite action a no-op).
         if event_action == EventAction.ACCEPT and proposed_event:
-            # Add proposed event to calendar
+            # Apply any date/time edits made in the scenario card before accepting
+            if "new_day_index" in details:
+                proposed_event.day_index = details["new_day_index"]
+            if "new_start" in details:
+                proposed_event.start = details["new_start"]
+            if "new_end" in details:
+                proposed_event.end = details["new_end"]
+            # Remember the accepted (chatbot-suggested) time so the participant
+            # can jump back to it later if they drag the event elsewhere
+            proposed_event.metadata["suggested_day_index"] = proposed_event.day_index
+            proposed_event.metadata["suggested_start"] = proposed_event.start
+            proposed_event.metadata["suggested_end"] = proposed_event.end
+            # Add proposed event to calendar (idempotent — may already be there
+            # if the participant is switching a prior decline back to accept)
             proposed_event.is_new = False
-            session.calendar_events.append(proposed_event)
+            if not any(e.id == event_id for e in session.calendar_events):
+                session.calendar_events.append(proposed_event)
 
-        elif event_action == EventAction.DECLINE and proposed_event:
-            # Remove from proposed events (don't add to calendar)
-            if round_obj and round_obj.scenario:
-                round_obj.scenario.injected_events = [
-                    e for e in round_obj.scenario.injected_events
-                    if e.id != event_id
-                ]
+        elif event_action == EventAction.DECLINE and (event or proposed_event):
+            # Make sure it's not on the calendar — may be undoing a prior
+            # accept from this round, or removing an event that was accepted
+            # in an earlier round via the calendar's event detail popup.
+            session.calendar_events = [
+                e for e in session.calendar_events if e.id != event_id
+            ]
 
         elif event_action == EventAction.RESCHEDULE and target_event:
             # Update event timing

@@ -11,6 +11,7 @@ export default function ChatbotPanel() {
     createSession,
     startRound,
     sendChat,
+    sendCalendarAction,
     completeRound,
     submitReflection,
   } = useSession()
@@ -65,7 +66,7 @@ export default function ChatbotPanel() {
         return
       }
       setRoundActive(true)
-      // Add the scenario message
+      // Add the scenario message, with a meeting card for the proposed event
       setMessages((msgs) => [
         ...msgs,
         {
@@ -73,6 +74,7 @@ export default function ChatbotPanel() {
           role: "assistant",
           text: data.message,
           meta: `Round ${data.round}/15 — ${data.phase}`,
+          card: buildScenarioCard(data.emails, data.round),
         },
       ])
     } catch (e) {
@@ -147,6 +149,20 @@ export default function ChatbotPanel() {
     }
   }
 
+  async function handleCardDecision(msgId, card, decision, details) {
+    if (!card.eventId || card.decision === decision) return
+    setMessages((msgs) =>
+      msgs.map((m) =>
+        m.id === msgId ? { ...m, card: { ...m.card, decision } } : m
+      )
+    )
+    try {
+      await sendCalendarAction(decision, card.eventId, details)
+    } catch (e) {
+      console.error("Failed to record calendar action:", e)
+    }
+  }
+
   function onKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
@@ -189,7 +205,13 @@ export default function ChatbotPanel() {
                 <div style={{ fontSize: 11, color: "#7c7c8a", marginBottom: 4 }}>{msg.meta}</div>
               )}
               {msg.text && <p className="chatbot-assistant-text">{msg.text}</p>}
-              {msg.card && <MeetingCard card={msg.card} />}
+              {msg.card && (
+                <MeetingCard
+                  card={msg.card}
+                  onAccept={(details) => handleCardDecision(msg.id, msg.card, "accept", details)}
+                  onReject={() => handleCardDecision(msg.id, msg.card, "decline")}
+                />
+              )}
             </div>
           )
         )}
@@ -263,7 +285,32 @@ export default function ChatbotPanel() {
   )
 }
 
-function MeetingCard({ card }) {
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+function buildScenarioCard(emails, roundNum) {
+  const email = emails?.[0]
+  const event = email?.proposed_event
+  if (!email || !event) return null
+
+  return {
+    mode: "accept_reject",
+    eventId: event.id,
+    title: `Scenario ${roundNum}`,
+    meetingTitle: event.title,
+    dayIndex: event.day_index,
+    start: event.start,
+    end: event.end,
+  }
+}
+
+function MeetingCard({ card, onAccept, onReject }) {
+  if (card.mode === "accept_reject") {
+    return <ScenarioCard card={card} onAccept={onAccept} onReject={onReject} />
+  }
+  return <ConfirmCard card={card} />
+}
+
+function ConfirmCard({ card }) {
   const [fields, setFields] = useState(card.fields)
   const [confirmed, setConfirmed] = useState(false)
 
@@ -300,6 +347,76 @@ function MeetingCard({ card }) {
         >
           {confirmed ? "Confirmed ✓" : "Confirm →"}
         </button>
+      </div>
+    </div>
+  )
+}
+
+function ScenarioCard({ card, onAccept, onReject }) {
+  const [dayIndex, setDayIndex] = useState(card.dayIndex)
+  const [start, setStart] = useState(card.start)
+  const [end, setEnd] = useState(card.end)
+
+  return (
+    <div className="meeting-card">
+      <div className="meeting-card-header">
+        <span className="meeting-card-title">{card.title}</span>
+      </div>
+      <div className="meeting-card-body">
+        <div className="meeting-field">
+          <label className="meeting-field-label">Title of the meeting</label>
+          <input className="meeting-field-input" type="text" value={card.meetingTitle} disabled />
+        </div>
+        <div className="meeting-field-row">
+          <div className="meeting-field meeting-field-date">
+            <label className="meeting-field-label">Date</label>
+            <select
+              className="meeting-field-input meeting-field-select"
+              value={dayIndex}
+              onChange={(e) => setDayIndex(Number(e.target.value))}
+            >
+              {WEEKDAY_NAMES.map((name, idx) => (
+                <option key={name} value={idx}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="meeting-field">
+            <label className="meeting-field-label">Time</label>
+            <div className="meeting-time-range">
+              <input
+                className="meeting-field-input"
+                type="time"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+              <span className="meeting-time-sep">–</span>
+              <input
+                className="meeting-field-input"
+                type="time"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="meeting-decision-row">
+          <button
+            type="button"
+            className={`meeting-reject-btn${card.decision === "decline" ? " decided" : ""}`}
+            onClick={onReject}
+          >
+            {card.decision === "decline" ? "Rejected ✓" : "Reject"}
+          </button>
+          <button
+            type="button"
+            className={`meeting-accept-btn${card.decision === "accept" ? " decided" : ""}`}
+            onClick={() =>
+              onAccept({ new_day_index: dayIndex, new_start: start, new_end: end })
+            }
+          >
+            {card.decision === "accept" ? "Accepted ✓" : "Accept →"}
+          </button>
+        </div>
       </div>
     </div>
   )

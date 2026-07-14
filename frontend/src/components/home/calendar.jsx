@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { useSession } from "../../services/SessionContext"
 import "./calendar.css"
+import "./chatbot.css" // shared meeting-field/button styles for the event detail modal
 
 const ROW_HEIGHT = 64
 const HOURS = Array.from({ length: 24 }, (_, idx) => idx)
@@ -17,6 +19,7 @@ function mapEvent(ev) {
     tone: ev.tone || "blue",
     category: ev.category || "work",
     isNew: ev.is_new ?? ev.isNew ?? false,
+    metadata: ev.metadata || {},
   }
 }
 
@@ -27,9 +30,12 @@ export default function CalendarPanel() {
   const [events, setEvents] = useState([])
   const [dragging, setDragging] = useState(null)
   const [dragPreview, setDragPreview] = useState(null)
+  const [selectedEvent, setSelectedEvent] = useState(null)
   const scrollerRef = useRef(null)
   const daysColumnsRef = useRef(null)
   const dragPreviewRef = useRef(null)
+  const movedRef = useRef(false)
+  const downPosRef = useRef({ x: 0, y: 0 })
 
   // Sync events from session context
   useEffect(() => {
@@ -77,7 +83,16 @@ export default function CalendarPanel() {
       return { dayIndex, startMinute, endMinute }
     }
 
+    const CLICK_MOVE_THRESHOLD = 4 // px — below this, treat mouseup as a click, not a drag
+
     function onMouseMove(e) {
+      if (
+        !movedRef.current &&
+        (Math.abs(e.clientX - downPosRef.current.x) > CLICK_MOVE_THRESHOLD ||
+          Math.abs(e.clientY - downPosRef.current.y) > CLICK_MOVE_THRESHOLD)
+      ) {
+        movedRef.current = true
+      }
       const slot = computeSnappedSlot(e)
       if (slot) {
         dragPreviewRef.current = slot
@@ -86,6 +101,18 @@ export default function CalendarPanel() {
     }
 
     function onMouseUp(e) {
+      if (!movedRef.current) {
+        // Treated as a click, not a drag — toggle the event detail modal
+        const clicked = dragging.event
+        setSelectedEvent((cur) =>
+          cur && cur.event.id === clicked.id ? null : { event: clicked, rect: dragging.rect }
+        )
+        dragPreviewRef.current = null
+        setDragPreview(null)
+        setDragging(null)
+        return
+      }
+
       const slot = computeSnappedSlot(e) || dragPreviewRef.current
       if (slot) {
         const newStart = minutesToTime(slot.startMinute)
@@ -135,7 +162,48 @@ export default function CalendarPanel() {
     e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
     const offsetY = e.clientY - rect.top
-    setDragging({ event: calEvent, offsetY })
+    movedRef.current = false
+    downPosRef.current = { x: e.clientX, y: e.clientY }
+    setDragging({ event: calEvent, offsetY, rect })
+  }
+
+  function handleRemoveEvent(event) {
+    setEvents((evs) => evs.filter((ev) => ev.id !== event.id))
+    if (sendCalendarAction) {
+      sendCalendarAction("decline", event.id).catch((err) =>
+        console.error("Failed to remove event:", err)
+      )
+    }
+    setSelectedEvent(null)
+  }
+
+  function handleUseSuggestedTime(event) {
+    const meta = event.metadata || {}
+    if (meta.suggested_start === undefined) return
+    const newDayIndex = meta.suggested_day_index
+    const newStart = meta.suggested_start
+    const newEnd = meta.suggested_end
+
+    setEvents((evs) =>
+      evs.map((ev) =>
+        ev.id === event.id
+          ? { ...ev, dayIndex: newDayIndex, start: newStart, end: newEnd }
+          : ev
+      )
+    )
+
+    if (sendCalendarAction) {
+      sendCalendarAction("reschedule", event.id, {
+        original_day: event.dayIndex,
+        original_start: event.start,
+        original_end: event.end,
+        new_day_index: newDayIndex,
+        new_start: newStart,
+        new_end: newEnd,
+      }).catch((err) => console.error("Failed to restore suggested time:", err))
+    }
+
+    setSelectedEvent(null)
   }
 
   function goToday() {
@@ -259,6 +327,91 @@ export default function CalendarPanel() {
           </div>
         </div>
       </section>
+
+      {selectedEvent &&
+        createPortal(
+          <EventDetailModal
+            event={selectedEvent.event}
+            anchorRect={selectedEvent.rect}
+            onClose={() => setSelectedEvent(null)}
+            onUseSuggestedTime={() => handleUseSuggestedTime(selectedEvent.event)}
+            onRemove={() => handleRemoveEvent(selectedEvent.event)}
+          />,
+          document.body
+        )}
+    </>
+  )
+}
+
+function EventDetailModal({ event, anchorRect, onClose, onUseSuggestedTime, onRemove }) {
+  const meta = event.metadata || {}
+  const hasSuggestion =
+    meta.suggested_start !== undefined &&
+    (meta.suggested_day_index !== event.dayIndex ||
+      meta.suggested_start !== event.start ||
+      meta.suggested_end !== event.end)
+
+  const modalWidth = 300
+  const gap = 14
+  const spaceRight = window.innerWidth - anchorRect.right
+  const openLeft = spaceRight < modalWidth + gap + 20
+  const left = openLeft ? anchorRect.left - modalWidth - gap : anchorRect.right + gap
+  const top = Math.min(
+    Math.max(8, anchorRect.top + anchorRect.height / 2 - 90),
+    window.innerHeight - 260
+  )
+
+  return (
+    <>
+      <div className="event-modal-backdrop" onClick={onClose} />
+      <div className="event-modal" style={{ top, left, width: modalWidth }}>
+        <div className="meeting-field">
+          <label className="meeting-field-label">Title of the meeting</label>
+          <input className="meeting-field-input" type="text" value={event.title} disabled />
+        </div>
+        <div className="meeting-field-row">
+          <div className="meeting-field meeting-field-date">
+            <label className="meeting-field-label">Date</label>
+            <input className="meeting-field-input" type="text" value={WEEKDAY_NAMES[event.dayIndex]} disabled />
+          </div>
+          <div className="meeting-field">
+            <label className="meeting-field-label">Time</label>
+            <div className="meeting-time-range">
+              <input className="meeting-field-input" type="text" value={toDisplayTime(event.start)} disabled />
+              <span className="meeting-time-sep">–</span>
+              <input className="meeting-field-input" type="text" value={toDisplayTime(event.end)} disabled />
+            </div>
+          </div>
+        </div>
+        {hasSuggestion && (
+          <div className="meeting-field">
+            <label className="meeting-field-label">Suggested time</label>
+            <div className="meeting-suggested-row">
+              <input
+                className="meeting-field-input"
+                type="text"
+                value={WEEKDAY_NAMES[meta.suggested_day_index]}
+                disabled
+              />
+              <div className="meeting-time-range">
+                <input className="meeting-field-input" type="text" value={toDisplayTime(meta.suggested_start)} disabled />
+                <span className="meeting-time-sep">–</span>
+                <input className="meeting-field-input" type="text" value={toDisplayTime(meta.suggested_end)} disabled />
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="meeting-decision-row">
+          <button type="button" className="meeting-reject-btn" onClick={onRemove}>
+            Remove
+          </button>
+          {hasSuggestion && (
+            <button type="button" className="meeting-accept-btn" onClick={onUseSuggestedTime}>
+              Update to suggested time →
+            </button>
+          )}
+        </div>
+      </div>
     </>
   )
 }
