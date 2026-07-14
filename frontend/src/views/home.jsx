@@ -14,11 +14,41 @@ function HomeContent() {
     valueWeights && valueWeights.length > 0
       ? valueWeights
       : [
-          { label: "Discovering…", weight: 20, tone: "green" },
-          { label: "Your", weight: 20, tone: "rose" },
-          { label: "Values", weight: 20, tone: "amber" },
-          { label: "Through", weight: 20, tone: "cyan" },
-          { label: "Actions", weight: 20, tone: "violet" },
+          {
+            label: "Value 1",
+            weight: 20,
+            tone: "green",
+            evidence: [{ id: "d1", text: "Waiting on your first conversation", round: 0 }],
+            calendarEvents: [{ id: "d1c", text: "Waiting on your first calendar action", round: 0 }],
+          },
+          {
+            label: "Value 2",
+            weight: 20,
+            tone: "rose",
+            evidence: [{ id: "y1", text: "Keep chatting to surface this value", round: 0 }],
+            calendarEvents: [{ id: "y1c", text: "Accept or decline events to surface this value", round: 0 }],
+          },
+          {
+            label: "Value 3",
+            weight: 20,
+            tone: "amber",
+            evidence: [{ id: "v1", text: "Keep chatting to surface this value", round: 0 }],
+            calendarEvents: [{ id: "v1c", text: "Accept or decline events to surface this value", round: 0 }],
+          },
+          {
+            label: "Value 4",
+            weight: 20,
+            tone: "cyan",
+            evidence: [{ id: "t1", text: "Keep chatting to surface this value", round: 0 }],
+            calendarEvents: [{ id: "t1c", text: "Accept or decline events to surface this value", round: 0 }],
+          },
+          {
+            label: "Value 5",
+            weight: 20,
+            tone: "violet",
+            evidence: [{ id: "a1", text: "Keep chatting to surface this value", round: 0 }],
+            calendarEvents: [{ id: "a1c", text: "Accept or decline events to surface this value", round: 0 }],
+          },
         ]
 
   return (

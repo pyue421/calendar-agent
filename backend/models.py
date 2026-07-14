@@ -181,14 +181,27 @@ class ValueEvidenceLedger(BaseModel):
                  "blue", "orange", "teal", "pink", "indigo"]
         sorted_hyps = sorted(self.hypotheses, key=lambda h: h.confidence, reverse=True)
         total_conf = sum(h.confidence for h in sorted_hyps) or 1.0
-        return [
-            {
+        result = []
+        for i, h in enumerate(sorted_hyps[:10]):
+            hyp_evidence = [e for e in self.evidence if e.id in h.evidence_ids]
+            conversational = [
+                {"id": e.id, "text": e.description, "round": e.round_num}
+                for e in hyp_evidence
+                if e.source_type == "conversational" and e.description
+            ]
+            behavioral = [
+                {"id": e.id, "text": e.description, "round": e.round_num}
+                for e in hyp_evidence
+                if e.source_type == "behavioral" and e.description
+            ]
+            result.append({
                 "label": h.label,
                 "weight": round((h.confidence / total_conf) * 100),
                 "tone": tones[i % len(tones)],
-            }
-            for i, h in enumerate(sorted_hyps[:10])
-        ]
+                "evidence": conversational[:4],
+                "calendarEvents": behavioral[:4],
+            })
+        return result
 
 
 # ── Debate Records ───────────────────────────────────────────────────
