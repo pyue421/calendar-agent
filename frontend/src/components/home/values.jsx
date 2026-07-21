@@ -56,6 +56,7 @@ export default function ValuesPanel({ valueWeights }) {
       </header>
 
       <div className="value-bubble-wrap">
+        {valueWeights.length === 0 && <p className="values-empty">Complete baseline calibration to create your current profile.</p>}
         {valueWeights.map((value, idx) => (
           <ValueBubble
             key={value.label}

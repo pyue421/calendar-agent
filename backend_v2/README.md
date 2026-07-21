@@ -13,8 +13,11 @@ GEMINI_API_KEY=your-key-from-google-ai-studio
 GEMINI_MODEL=gemini-2.5-flash-lite
 GEMINI_TIMEOUT_SECONDS=30
 RATIONALE_PARSER=gemini
+SCENARIO_GENERATOR=deterministic
 ```
 
 The API key is backend-only. Never use a `VITE_` prefix or place it in the frontend. Gemini 2.5 Flash-Lite is the default because it supports structured output and is available on Gemini's free tier, subject to Google's current quotas and data-use terms.
+
+Set `SCENARIO_GENERATOR=gemini` to let Gemini personalize requester/title/request wording. The server still fixes scenario identity, module, schedule/conflict structure, feasible actions, and action features. Invalid or unavailable generation falls back to the controlled deterministic wording.
 
 Persistence is intentionally in-memory for this first vertical slice. Export contains previews, decisions, rationales, evidence, posterior summary, and model configuration. Hidden experimental metadata stays server-side.

@@ -47,6 +47,16 @@ class RationaleRequest(BaseModel):
     rationale: str = Field(min_length=1, max_length=4000)
 
 
+class CalibrationResponse(BaseModel):
+    question_id: str
+    choice: Literal["a", "b"]
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
 class RationaleObservation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

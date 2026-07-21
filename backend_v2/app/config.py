@@ -24,6 +24,7 @@ class LLMConfig:
     api_key: str | None = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
     timeout_seconds: float = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "30"))
+    scenario_generator: str = os.getenv("SCENARIO_GENERATOR", "deterministic")
 
 
 LLM_CONFIG = LLMConfig()

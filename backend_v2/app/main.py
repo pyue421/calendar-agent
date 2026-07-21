@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .models import DecisionRequest, PreviewRequest, RationaleRequest, SessionCreate
+from .models import CalibrationResponse, ChatRequest, DecisionRequest, PreviewRequest, RationaleRequest, SessionCreate
 from .llm.rationale_parser import RationaleParserConfigurationError, RationaleParserError
 from .config import LLM_CONFIG
 from .services.session_service import sessions
@@ -45,18 +45,31 @@ def state(sid: str): return call(sessions.state, sid)
 def next_event(sid: str): return call(sessions.next_event, sid)
 
 
+@app.get("/api/sessions/{sid}/calibration")
+def calibration(sid: str): return call(sessions.calibration_questions, sid)
+
+
+@app.post("/api/sessions/{sid}/calibration/responses")
+def calibration_response(sid: str, body: CalibrationResponse):
+    return call(sessions.calibrate, sid, body.question_id, body.choice, body.rationale)
+
+
 @app.post("/api/sessions/{sid}/previews")
 def preview(sid: str, body: PreviewRequest):
-    return call(sessions.preview, sid, body.action, body.candidate_schedule.model_dump() if body.candidate_schedule else None, body.display_state)
+    return call(sessions.preview, sid, body.event_id, body.action, body.candidate_schedule.model_dump() if body.candidate_schedule else None, body.display_state)
 
 
 @app.post("/api/sessions/{sid}/decisions")
 def decision(sid: str, body: DecisionRequest):
-    return call(sessions.decide, sid, body.action, body.candidate_schedule.model_dump() if body.candidate_schedule else None)
+    return call(sessions.decide, sid, body.event_id, body.action, body.candidate_schedule.model_dump() if body.candidate_schedule else None)
 
 
 @app.post("/api/sessions/{sid}/rationales")
 def rationale(sid: str, body: RationaleRequest): return call(sessions.rationale, sid, body.decision_id, body.rationale)
+
+
+@app.post("/api/sessions/{sid}/chat")
+def chat(sid: str, body: ChatRequest): return call(sessions.chat, sid, body.message)
 
 
 @app.get("/api/sessions/{sid}/export")
