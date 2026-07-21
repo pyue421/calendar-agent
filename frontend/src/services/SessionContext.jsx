@@ -24,6 +24,9 @@ export default function SessionProvider({ children }) {
   // bubbles showing the previewed weights until the round completes).
   const [previewValueWeights, setPreviewValueWeights] = useState(null)
   const [previewConfirmed, setPreviewConfirmed] = useState(false)
+  // Index of the value whose matched calendar items are being surfaced
+  // (set while a New Values bubble's popup is open); null = no highlight.
+  const [focusedValueIndex, setFocusedValueIndex] = useState(null)
 
   // Create session on mount
   useEffect(() => {
@@ -152,6 +155,8 @@ export default function SessionProvider({ children }) {
         setPreviewValueWeights,
         previewConfirmed,
         setPreviewConfirmed,
+        focusedValueIndex,
+        setFocusedValueIndex,
         roundStatus,
         loading,
         createSession,

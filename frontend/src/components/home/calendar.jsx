@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useSession } from "../../services/SessionContext"
+import { toneForEvent, valueIndexForEvent } from "../../services/valueMapping"
 import "./calendar.css"
 import "./chatbot.css" // shared meeting-field/button styles for the event detail modal
 
@@ -8,15 +9,17 @@ const ROW_HEIGHT = 64
 const HOURS = Array.from({ length: 24 }, (_, idx) => idx)
 const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
-// Map backend snake_case event to frontend camelCase
-function mapEvent(ev) {
+// Map backend snake_case event to frontend camelCase. The tone comes from
+// the event's matched value (via category) so calendar colors always agree
+// with the value bubbles.
+function mapEvent(ev, valueCount) {
   return {
     id: ev.id,
     title: ev.title,
     dayIndex: ev.day_index ?? ev.dayIndex ?? 0,
     start: ev.start,
     end: ev.end,
-    tone: ev.tone || "blue",
+    tone: toneForEvent(ev, valueCount),
     category: ev.category || "work",
     isNew: ev.is_new ?? ev.isNew ?? false,
     metadata: ev.metadata || {},
@@ -24,7 +27,8 @@ function mapEvent(ev) {
 }
 
 export default function CalendarPanel() {
-  const { calendarEvents, sendCalendarAction } = useSession()
+  const { calendarEvents, sendCalendarAction, focusedValueIndex, valueWeights } = useSession()
+  const valueCount = valueWeights && valueWeights.length > 0 ? valueWeights.length : 5
 
   const [weekOffset, setWeekOffset] = useState(0)
   const [events, setEvents] = useState([])
@@ -40,9 +44,9 @@ export default function CalendarPanel() {
   // Sync events from session context
   useEffect(() => {
     if (calendarEvents && calendarEvents.length > 0) {
-      setEvents(calendarEvents.map(mapEvent))
+      setEvents(calendarEvents.map((ev) => mapEvent(ev, valueCount)))
     }
-  }, [calendarEvents])
+  }, [calendarEvents, valueCount])
 
   const weekStart = useMemo(() => {
     const base = startOfWeekMonday(new Date())
@@ -314,13 +318,16 @@ export default function CalendarPanel() {
                     .map((event) => {
                       const isDragSource = dragging && dragging.event.id === event.id
                       const isRejected = !!event.metadata?.rejected
+                      const isDimmed =
+                        focusedValueIndex != null &&
+                        valueIndexForEvent(event, valueCount) !== focusedValueIndex
                       const startMinutes = toMinutes(event.start)
                       const endMinutes = toMinutes(event.end)
                       const duration = endMinutes - startMinutes
                       return (
                         <article
                           key={event.id}
-                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}${isDragSource ? " calendar-event-drag-source" : ""}${isRejected ? " calendar-event-rejected" : ""}`}
+                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}${isDragSource ? " calendar-event-drag-source" : ""}${isRejected ? " calendar-event-rejected" : ""}${isDimmed ? " calendar-event-dimmed" : ""}`}
                           style={{
                             top: `${(startMinutes / 60) * ROW_HEIGHT}px`,
                             height: `${(duration / 60) * ROW_HEIGHT}px`,

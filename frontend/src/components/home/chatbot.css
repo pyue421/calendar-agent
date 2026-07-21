@@ -374,6 +374,72 @@
   color: #166534;
 }
 
+/* Value Changes card — one plain line per value ("▲ Value 3: 20% → 22%
+   (+2)"); lines whose weight moved expand on click to show a short
+   explanation of why the decision shifted that value. */
+.value-changes-body {
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.value-change-item {
+  width: 100%;
+}
+
+.value-change-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin: 0;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #25252a;
+  text-align: left;
+  background: none;
+  border: none;
+}
+
+.value-change-toggle {
+  cursor: pointer;
+}
+
+.value-change-arrow {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #8a8f98;
+}
+
+.value-change-arrow.up {
+  color: #16a34a;
+}
+
+.value-change-arrow.down {
+  color: #dc2626;
+}
+
+.value-change-chevron {
+  margin-left: auto;
+  color: #8a8f98;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+
+.value-change-chevron.open {
+  transform: rotate(90deg);
+}
+
+.value-change-detail {
+  margin: 2px 0 4px 18px;
+  padding-left: 8px;
+  border-left: 2px solid #dee5eb;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #5d666f;
+}
+
 .meeting-confirm-row {
   display: flex;
   justify-content: flex-end;

@@ -249,6 +249,43 @@
   color: #00546E;
 }
 
+/* Value-tone event colors — same palette as the value bubbles, so each
+   calendar item visually matches the value it maps to. */
+.calendar-event-green {
+  background: rgba(182, 243, 212, 0.5);
+  border-left-color: #49E194;
+  color: #0E7A44;
+}
+
+.calendar-event-rose {
+  background: rgba(255, 225, 238, 0.7);
+  border-left-color: #FD81C9;
+  color: #B02472;
+}
+
+.calendar-event-amber {
+  background: rgba(251, 223, 130, 0.35);
+  border-left-color: #FFD351;
+  color: #8A6B00;
+}
+
+.calendar-event-cyan {
+  background: rgba(196, 240, 255, 0.6);
+  border-left-color: #48CBF4;
+  color: #00546E;
+}
+
+.calendar-event-violet {
+  background: rgba(203, 167, 246, 0.3);
+  border-left-color: #C281EB;
+  color: #6D03AF;
+}
+
+.calendar-event-dimmed {
+  opacity: 0.22;
+  transition: opacity 0.2s ease;
+}
+
 .calendar-availability-card {
   position: absolute;
   left: 0;

@@ -207,12 +207,19 @@ export default function ChatbotPanel() {
                 <div style={{ fontSize: 11, color: "#7c7c8a", marginBottom: 4 }}>{msg.meta}</div>
               )}
               {msg.text && <p className="chatbot-assistant-text">{msg.text}</p>}
+              {msg.valuesCard && <ValueChangesCard breakdown={msg.valuesCard} />}
               {msg.card && (
                 <MeetingCard
                   card={msg.card}
                   onAccept={(details) => handleCardDecision(msg.id, msg.card, "accept", details)}
                   onReject={() => handleCardDecision(msg.id, msg.card, "decline")}
                   onPostpone={() => handleCardDecision(msg.id, msg.card, "postpone")}
+                  onConfirmBreakdown={(breakdown) =>
+                    setMessages((msgs) => [
+                      ...msgs,
+                      { id: `m_breakdown_${Date.now()}`, role: "assistant", valuesCard: breakdown },
+                    ])
+                  }
                 />
               )}
             </div>
@@ -306,10 +313,89 @@ function buildScenarioCard(emails, roundNum) {
   }
 }
 
-function MeetingCard({ card, onAccept, onReject, onPostpone }) {
+function changeExplanation(action, title, label, delta) {
+  const verb = { accept: "Accepting", decline: "Declining", postpone: "Postponing" }[action]
+  if (delta > 0) {
+    if (action === "accept")
+      return `${verb} "${title}" reads as leaning into ${label} — taking this on reinforces the weight it already carries in your profile.`
+    if (action === "decline")
+      return `${verb} "${title}" suggests you protected ${label} over the request, so its weight rose in the estimate.`
+    return `${verb} "${title}" keeps the decision open, and the estimate nudges ${label} up toward a more balanced profile.`
+  }
+  if (action === "accept")
+    return `${verb} "${title}" pulled the estimate toward your stronger values, easing ${label} down slightly.`
+  if (action === "decline")
+    return `${verb} "${title}" shifted weight away from ${label} toward values that were under-represented.`
+  return `${verb} "${title}" nudges ${label} down toward a more balanced profile while the decision stays open.`
+}
+
+function ValueChangesCard({ breakdown }) {
+  const { action, title, items } = breakdown
+  const [expandedLabel, setExpandedLabel] = useState(null)
+
+  return (
+    <div className="meeting-card">
+      <div className="meeting-card-header">
+        <span className="meeting-card-title">Value Changes</span>
+      </div>
+      <div className="meeting-card-body value-changes-body">
+        {items.map((item) => {
+          const delta = item.to - item.from
+          const changed = delta !== 0
+          const arrow = delta > 0 ? "▲" : delta < 0 ? "▼" : "•"
+          const sign = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : "±0"
+          const expanded = expandedLabel === item.label
+          const line = (
+            <>
+              <span
+                className={`value-change-arrow${delta > 0 ? " up" : delta < 0 ? " down" : ""}`}
+              >
+                {arrow}
+              </span>
+              {` ${item.label}: ${item.from}% → ${item.to}% (${sign})`}
+            </>
+          )
+          if (!changed) {
+            return (
+              <p key={item.label} className="value-change-line">
+                {line}
+              </p>
+            )
+          }
+          return (
+            <div key={item.label} className="value-change-item">
+              <button
+                type="button"
+                className="value-change-line value-change-toggle"
+                onClick={() => setExpandedLabel(expanded ? null : item.label)}
+                aria-expanded={expanded}
+              >
+                {line}
+                <span className={`value-change-chevron${expanded ? " open" : ""}`}>▸</span>
+              </button>
+              {expanded && (
+                <p className="value-change-detail">
+                  {changeExplanation(action, title, item.label, delta)}
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function MeetingCard({ card, onAccept, onReject, onPostpone, onConfirmBreakdown }) {
   if (card.mode === "accept_reject") {
     return (
-      <ScenarioCard card={card} onAccept={onAccept} onReject={onReject} onPostpone={onPostpone} />
+      <ScenarioCard
+        card={card}
+        onAccept={onAccept}
+        onReject={onReject}
+        onPostpone={onPostpone}
+        onConfirmBreakdown={onConfirmBreakdown}
+      />
     )
   }
   return <ConfirmCard card={card} />
@@ -357,7 +443,7 @@ function ConfirmCard({ card }) {
   )
 }
 
-function ScenarioCard({ card, onAccept, onReject, onPostpone }) {
+function ScenarioCard({ card, onAccept, onReject, onPostpone, onConfirmBreakdown }) {
   const [meetingTitle, setMeetingTitle] = useState(card.meetingTitle)
   const [dayIndex, setDayIndex] = useState(card.dayIndex)
   const [start, setStart] = useState(card.start)
@@ -391,6 +477,18 @@ function ScenarioCard({ card, onAccept, onReject, onPostpone }) {
       onReject()
     } else {
       onPostpone()
+    }
+    if (onConfirmBreakdown) {
+      const next = previewFor(pending)
+      onConfirmBreakdown({
+        action: pending,
+        title: meetingTitle.trim() || card.meetingTitle,
+        items: baselineWeights.map((v, i) => ({
+          label: v.label,
+          from: v.weight,
+          to: next[i].weight,
+        })),
+      })
     }
     setPreviewConfirmed(true)
     setPending(null)
