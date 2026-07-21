@@ -59,6 +59,12 @@
   min-height: 0;
 }
 
+.home-right-column > .preview-values-card {
+  flex: 0 0 auto;
+  min-height: 190px;
+  overflow-y: auto;
+}
+
 .home-right-column > .goals-panel {
   flex: 1 1 0;
   min-height: 0;

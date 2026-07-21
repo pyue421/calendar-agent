@@ -10,13 +10,15 @@ const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
 // Map backend snake_case event to frontend camelCase
 function mapEvent(ev) {
+  const isoStart = ev.start?.includes("T") ? new Date(ev.start) : null
+  const isoEnd = ev.end?.includes("T") ? new Date(ev.end) : null
   return {
     id: ev.id,
     title: ev.title,
-    dayIndex: ev.day_index ?? ev.dayIndex ?? 0,
-    start: ev.start,
-    end: ev.end,
-    tone: ev.tone || "blue",
+    dayIndex: ev.day_index ?? ev.dayIndex ?? (isoStart ? Math.max(0, Math.min(4, (isoStart.getDay() + 6) % 7)) : 0),
+    start: isoStart ? isoStart.toTimeString().slice(0, 5) : ev.start,
+    end: isoEnd ? isoEnd.toTimeString().slice(0, 5) : ev.end,
+    tone: ev.temporary ? "amber" : (ev.tone || "blue"),
     category: ev.category || "work",
     isNew: ev.is_new ?? ev.isNew ?? false,
     metadata: ev.metadata || {},
@@ -24,7 +26,7 @@ function mapEvent(ev) {
 }
 
 export default function CalendarPanel() {
-  const { calendarEvents, sendCalendarAction } = useSession()
+  const { calendarEvents, candidateEvent, sendCalendarAction } = useSession()
 
   const [weekOffset, setWeekOffset] = useState(0)
   const [events, setEvents] = useState([])
@@ -39,10 +41,10 @@ export default function CalendarPanel() {
 
   // Sync events from session context
   useEffect(() => {
-    if (calendarEvents && calendarEvents.length > 0) {
-      setEvents(calendarEvents.map(mapEvent))
-    }
-  }, [calendarEvents])
+    // Calendar interactions keep a local working copy; context changes are its external reset signal.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEvents([...(calendarEvents || []), ...(candidateEvent ? [candidateEvent] : [])].map(mapEvent))
+  }, [calendarEvents, candidateEvent])
 
   const weekStart = useMemo(() => {
     const base = startOfWeekMonday(new Date())
@@ -155,7 +157,7 @@ export default function CalendarPanel() {
       window.removeEventListener("mousemove", onMouseMove)
       window.removeEventListener("mouseup", onMouseUp)
     }
-  }, [dragging])
+  }, [dragging, sendCalendarAction])
 
   function onEventMouseDown(e, calEvent) {
     e.stopPropagation()

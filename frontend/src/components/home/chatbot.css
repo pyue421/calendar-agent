@@ -371,3 +371,16 @@
   width: 12px;
   height: 12px;
 }
+
+.reflection-panel { min-width: 330px; }
+.reflection-content { padding: 20px; overflow-y: auto; color: #34343b; }
+.reflection-content h3 { margin: 6px 0 10px; font-size: 18px; }
+.reflection-eyebrow { margin: 0 0 4px; color: #5562d9; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.decision-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
+.decision-option { display: grid; gap: 6px; }
+.preview-button { padding: 7px 10px; border: 1px solid #ccd3dc; border-radius: 6px; background: white; cursor: pointer; }
+.reschedule-box { display: grid; gap: 9px; padding: 14px; border: 1px solid #dfe3ea; border-radius: 10px; background: #fafbfc; }
+.reschedule-box input, .rationale-form textarea { padding: 9px; border: 1px solid #ccd3dc; border-radius: 6px; font: inherit; }
+.reschedule-actions { display: flex; gap: 8px; }
+.rationale-form { display: grid; gap: 10px; }
+.reflection-error { margin: 0; padding: 8px; border-radius: 6px; color: #8f1d1d; background: #fff0f0; font-size: 12px; }

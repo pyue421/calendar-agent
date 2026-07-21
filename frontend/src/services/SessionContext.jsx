@@ -1,152 +1,79 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react"
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react"
 
-const API_BASE = "http://127.0.0.1:8000"
-
+const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000"
 const SessionContext = createContext(null)
 
-export function useSession() {
-  return useContext(SessionContext)
+export function useSession() { return useContext(SessionContext) }
+
+async function request(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+  })
+  if (!response.ok) throw new Error((await response.json()).detail || "Request failed")
+  return response.json()
+}
+
+function toLegacyValues(profile = []) {
+  const tones = ["green", "rose", "amber", "cyan", "violet"]
+  return [...profile].sort((a, b) => b.weight - a.weight).slice(0, 5).map((value, index) => ({
+    ...value, weight: Math.round(value.weight), tone: tones[index],
+    evidence: [{ id: `${value.id}-r`, text: "Posterior estimate from committed evidence", round: 0 }],
+    calendarEvents: [{ id: `${value.id}-c`, text: `Uncertainty ±${value.uncertainty}%`, round: 0 }],
+  }))
 }
 
 export default function SessionProvider({ children }) {
   const [sessionId, setSessionId] = useState(null)
-  const [currentRound, setCurrentRound] = useState(0)
-  const [phase, setPhase] = useState(null)
+  const [event, setEvent] = useState(null)
+  const [currentProfile, setCurrentProfile] = useState([])
+  const [preview, setPreview] = useState(null)
+  const [candidateEvent, setCandidateEvent] = useState(null)
+  const [pendingDecision, setPendingDecision] = useState(null)
   const [calendarEvents, setCalendarEvents] = useState([])
-  const [valueWeights, setValueWeights] = useState([])
-  const [roundStatus, setRoundStatus] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
-  // Create session on mount
-  useEffect(() => {
-    const stored = localStorage.getItem("discover_session_id")
-    if (stored) {
-      setSessionId(stored)
-      refreshState(stored)
-    }
+  const initialize = useCallback(async () => {
+    setLoading(true)
+    try {
+      const session = await request("/api/sessions", { method: "POST", body: JSON.stringify({ participant_id: `participant_${Date.now()}` }) })
+      setSessionId(session.session_id); setCurrentProfile(session.current_profile); setCalendarEvents(session.calendar)
+      const next = await request(`/api/sessions/${session.session_id}/events/next`, { method: "POST" })
+      setEvent(next.event)
+    } finally { setLoading(false) }
   }, [])
 
-  async function createSession(participantId = "") {
-    setLoading(true)
-    try {
-      const res = await fetch(`${API_BASE}/api/session/create`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participant_id: participantId }),
-      })
-      const data = await res.json()
-      setSessionId(data.session_id)
-      setCalendarEvents(data.calendar_events || [])
-      localStorage.setItem("discover_session_id", data.session_id)
-      return data
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => { initialize().catch(console.error) }, [initialize])
 
-  async function refreshState(sid) {
-    const id = sid || sessionId
-    if (!id) return
-    try {
-      const res = await fetch(`${API_BASE}/api/session/${id}/state`)
-      const data = await res.json()
-      setCurrentRound(data.current_round)
-      setPhase(data.phase)
-      setCalendarEvents(data.calendar_events || [])
-      setValueWeights(data.value_weights || [])
-      setRoundStatus(data.round_status)
-      return data
-    } catch (e) {
-      console.error("Failed to refresh session state:", e)
-    }
-  }
-
-  async function startRound() {
-    if (!sessionId) return
-    setLoading(true)
-    try {
-      const res = await fetch(`${API_BASE}/api/session/${sessionId}/start-round`, {
-        method: "POST",
-      })
-      const data = await res.json()
-      setCurrentRound(data.round)
-      setPhase(data.phase)
-      // Proposed events stay pending (shown only in the chat's meeting card)
-      // until the user accepts them via sendCalendarAction — see MeetingCard.
-      if (data.existing_events) setCalendarEvents(data.existing_events)
-      return data
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function sendChat(message) {
-    if (!sessionId) return
-    const res = await fetch(`${API_BASE}/api/session/${sessionId}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+  async function loadPreview(action, candidateSchedule, displayState = "pinned") {
+    const result = await request(`/api/sessions/${sessionId}/previews`, {
+      method: "POST", body: JSON.stringify({ event_id: event.id, action, candidate_schedule: candidateSchedule, display_state: displayState }),
     })
-    return await res.json()
+    setPreview(result)
+    return result
   }
 
-  async function sendCalendarAction(action, eventId, details = null) {
-    if (!sessionId) return
-    const res = await fetch(`${API_BASE}/api/session/${sessionId}/calendar-action`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, event_id: eventId, details }),
+  async function commitDecision(action, candidateSchedule) {
+    const result = await request(`/api/sessions/${sessionId}/decisions`, {
+      method: "POST", body: JSON.stringify({ event_id: event.id, action, candidate_schedule: candidateSchedule }),
     })
-    const data = await res.json()
-    if (data.calendar_events) setCalendarEvents(data.calendar_events)
-    return data
+    setCurrentProfile(result.current_profile); setCalendarEvents(result.calendar); setPendingDecision(result); setPreview(null); setCandidateEvent(null)
+    return result
   }
 
-  async function completeRound() {
-    if (!sessionId) return
-    setLoading(true)
-    try {
-      const res = await fetch(`${API_BASE}/api/session/${sessionId}/complete-round`, {
-        method: "POST",
-      })
-      const data = await res.json()
-      if (data.value_weights) setValueWeights(data.value_weights)
-      return data
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function submitReflection(response) {
-    if (!sessionId) return
-    const res = await fetch(`${API_BASE}/api/session/${sessionId}/reflect`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ response }),
+  async function submitRationale(rationale) {
+    const result = await request(`/api/sessions/${sessionId}/rationales`, {
+      method: "POST", body: JSON.stringify({ decision_id: pendingDecision.decision_id, rationale }),
     })
-    return await res.json()
+    setCurrentProfile(result.current_profile); setPendingDecision(null)
+    return result
   }
 
-  return (
-    <SessionContext.Provider
-      value={{
-        sessionId,
-        currentRound,
-        phase,
-        calendarEvents,
-        valueWeights,
-        roundStatus,
-        loading,
-        createSession,
-        refreshState,
-        startRound,
-        sendChat,
-        sendCalendarAction,
-        completeRound,
-        submitReflection,
-      }}
-    >
-      {children}
-    </SessionContext.Provider>
-  )
+  return <SessionContext.Provider value={{
+    sessionId, event, currentProfile, valueWeights: toLegacyValues(currentProfile), preview,
+    candidateEvent, setCandidateEvent, pendingDecision, calendarEvents, loading,
+    loadPreview, commitDecision, submitRationale, clearPreview: () => setPreview(null),
+    sendCalendarAction: async () => ({ calendar_events: calendarEvents }),
+  }}>{children}</SessionContext.Provider>
 }
