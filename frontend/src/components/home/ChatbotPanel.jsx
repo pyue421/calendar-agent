@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react"
 import { useSession } from "../../services/SessionContext"
+import { DEFAULT_VALUE_WEIGHTS } from "../../services/defaultValueWeights"
+import { previewWeightsForAction } from "../../services/valuePreview"
 import "./chatbot.css"
 
 export default function ChatbotPanel() {
@@ -210,6 +212,7 @@ export default function ChatbotPanel() {
                   card={msg.card}
                   onAccept={(details) => handleCardDecision(msg.id, msg.card, "accept", details)}
                   onReject={() => handleCardDecision(msg.id, msg.card, "decline")}
+                  onPostpone={() => handleCardDecision(msg.id, msg.card, "postpone")}
                 />
               )}
             </div>
@@ -303,9 +306,11 @@ function buildScenarioCard(emails, roundNum) {
   }
 }
 
-function MeetingCard({ card, onAccept, onReject }) {
+function MeetingCard({ card, onAccept, onReject, onPostpone }) {
   if (card.mode === "accept_reject") {
-    return <ScenarioCard card={card} onAccept={onAccept} onReject={onReject} />
+    return (
+      <ScenarioCard card={card} onAccept={onAccept} onReject={onReject} onPostpone={onPostpone} />
+    )
   }
   return <ConfirmCard card={card} />
 }
@@ -352,10 +357,56 @@ function ConfirmCard({ card }) {
   )
 }
 
-function ScenarioCard({ card, onAccept, onReject }) {
+function ScenarioCard({ card, onAccept, onReject, onPostpone }) {
+  const [meetingTitle, setMeetingTitle] = useState(card.meetingTitle)
   const [dayIndex, setDayIndex] = useState(card.dayIndex)
   const [start, setStart] = useState(card.start)
   const [end, setEnd] = useState(card.end)
+  // Action the participant is previewing but has not confirmed yet.
+  const [pending, setPending] = useState(null)
+  const { valueWeights, setPreviewValueWeights, setPreviewConfirmed } = useSession()
+
+  const baselineWeights = valueWeights && valueWeights.length > 0 ? valueWeights : DEFAULT_VALUE_WEIGHTS
+  const previewFor = (action) => previewWeightsForAction(baselineWeights, card.eventId, action)
+
+  function preview(action) {
+    // Only previews: pushes the estimated weights into the New Values
+    // bubbles so the participant can see the effect before committing.
+    // Nothing is recorded until they press Confirm.
+    setPending(action)
+    setPreviewValueWeights(previewFor(action))
+    setPreviewConfirmed(false)
+  }
+
+  function confirmPending() {
+    if (!pending) return
+    if (pending === "accept") {
+      onAccept({
+        new_title: meetingTitle.trim() || card.meetingTitle,
+        new_day_index: dayIndex,
+        new_start: start,
+        new_end: end,
+      })
+    } else if (pending === "decline") {
+      onReject()
+    } else {
+      onPostpone()
+    }
+    setPreviewConfirmed(true)
+    setPending(null)
+  }
+
+  function actionLabel(action, idle, previewing, confirmed) {
+    if (pending === action) return previewing
+    if (!pending && card.decision === action) return confirmed
+    return idle
+  }
+
+  function actionClass(action) {
+    if (pending === action) return " previewing"
+    if (!pending && card.decision === action) return ` confirmed-${action}`
+    return ""
+  }
 
   return (
     <div className="meeting-card">
@@ -365,58 +416,84 @@ function ScenarioCard({ card, onAccept, onReject }) {
       <div className="meeting-card-body">
         <div className="meeting-field">
           <label className="meeting-field-label">Title of the meeting</label>
-          <input className="meeting-field-input" type="text" value={card.meetingTitle} disabled />
+          <div className="meeting-input-shell meeting-input-shell-plain">
+            <input
+              className="meeting-field-input"
+              type="text"
+              value={meetingTitle}
+              onChange={(e) => setMeetingTitle(e.target.value)}
+            />
+          </div>
         </div>
         <div className="meeting-field-row">
           <div className="meeting-field meeting-field-date">
             <label className="meeting-field-label">Date</label>
-            <select
-              className="meeting-field-input meeting-field-select"
-              value={dayIndex}
-              onChange={(e) => setDayIndex(Number(e.target.value))}
-            >
-              {WEEKDAY_NAMES.map((name, idx) => (
-                <option key={name} value={idx}>{name}</option>
-              ))}
-            </select>
+            <div className="meeting-input-shell meeting-input-shell-plain meeting-input-shell-select">
+              <select
+                className="meeting-field-input meeting-field-select"
+                value={dayIndex}
+                onChange={(e) => setDayIndex(Number(e.target.value))}
+              >
+                {WEEKDAY_NAMES.map((name, idx) => (
+                  <option key={name} value={idx}>{name}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="meeting-field">
             <label className="meeting-field-label">Time</label>
             <div className="meeting-time-range">
-              <input
-                className="meeting-field-input"
-                type="time"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-              />
+              <div className="meeting-input-shell meeting-input-shell-plain meeting-time-shell">
+                <input
+                  className="meeting-field-input"
+                  type="time"
+                  value={start}
+                  onChange={(e) => setStart(e.target.value)}
+                />
+              </div>
               <span className="meeting-time-sep">–</span>
-              <input
-                className="meeting-field-input"
-                type="time"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-              />
+              <div className="meeting-input-shell meeting-input-shell-plain meeting-time-shell">
+                <input
+                  className="meeting-field-input"
+                  type="time"
+                  value={end}
+                  onChange={(e) => setEnd(e.target.value)}
+                />
+              </div>
             </div>
           </div>
         </div>
+
         <div className="meeting-decision-row">
           <button
             type="button"
-            className={`meeting-reject-btn${card.decision === "decline" ? " decided" : ""}`}
-            onClick={onReject}
+            className={`meeting-action-btn${actionClass("decline")}`}
+            onClick={() => preview("decline")}
           >
-            {card.decision === "decline" ? "Rejected ✓" : "Reject"}
+            {actionLabel("decline", "Decline", "Declining (preview)", "Declined ✓")}
           </button>
           <button
             type="button"
-            className={`meeting-accept-btn${card.decision === "accept" ? " decided" : ""}`}
-            onClick={() =>
-              onAccept({ new_day_index: dayIndex, new_start: start, new_end: end })
-            }
+            className={`meeting-action-btn${actionClass("postpone")}`}
+            onClick={() => preview("postpone")}
           >
-            {card.decision === "accept" ? "Accepted ✓" : "Accept →"}
+            {actionLabel("postpone", "Postpone", "Postponing (preview)", "Postponed ✓")}
+          </button>
+          <button
+            type="button"
+            className={`meeting-action-btn${actionClass("accept")}`}
+            onClick={() => preview("accept")}
+          >
+            {actionLabel("accept", "Accept", "Accepting (preview)", "Accepted ✓")}
           </button>
         </div>
+        {pending && (
+          <div className="meeting-confirm-row">
+            <button type="button" className="meeting-confirm-decision-btn" onClick={confirmPending}>
+              Confirm →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

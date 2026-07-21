@@ -2,75 +2,58 @@ import React, { useState } from "react"
 import { createPortal } from "react-dom"
 import "./values.css"
 
-const innerSlotPositions = [
-  [{ top: "50%", left: "50%" }],
-  [{ top: "30%", left: "32%" }, { top: "66%", left: "60%" }],
-  [{ top: "24%", left: "30%" }, { top: "30%", left: "66%" }, { top: "68%", left: "40%" }],
-  [
-    { top: "22%", left: "30%" },
-    { top: "26%", left: "68%" },
-    { top: "62%", left: "26%" },
-    { top: "66%", left: "64%" },
-  ],
-]
-
-function shortLabel(text, maxWords = 3) {
-  const words = text.trim().split(/\s+/)
-  if (words.length <= maxWords) return text
-  return words.slice(0, maxWords).join(" ") + "…"
-}
-
-export default function ValuesPanel({ valueWeights }) {
-  const [viewMode, setViewMode] = useState("original")
+export default function ValuesPanel({ valueWeights, previewWeights, previewConfirmed }) {
   const [activeModal, setActiveModal] = useState(null)
+  // Dim the bubbles only while the decision is still an unconfirmed preview;
+  // once confirmed they render in full color with the previewed weights.
+  const isPreviewing = !!previewWeights && !previewConfirmed
+  const newValues = previewWeights || valueWeights
 
-  function openModal(index, rect) {
-    setActiveModal((cur) => (cur && cur.index === index ? null : { index, rect }))
-  }
-
-  function switchMode(next) {
-    setViewMode(next)
-    setActiveModal(null)
+  function openModal(section, index, rect) {
+    setActiveModal((cur) =>
+      cur && cur.section === section && cur.index === index ? null : { section, index, rect }
+    )
   }
 
   return (
     <section className="home-values-card">
-      <header className="section-header values-header">
-        <h2>Values in Your Solution</h2>
-        <div className="values-view-toggle">
-          <button
-            type="button"
-            className={`values-view-btn${viewMode === "original" ? " active" : ""}`}
-            onClick={() => switchMode("original")}
-          >
-            Original
-          </button>
-          <button
-            type="button"
-            className={`values-view-btn${viewMode === "new" ? " active" : ""}`}
-            onClick={() => switchMode("new")}
-          >
-            New
-          </button>
+      <div className="values-section">
+        <header className="section-header values-header">
+          <h2>Original Values</h2>
+        </header>
+        <div className="value-bubble-wrap">
+          {valueWeights.map((value, idx) => (
+            <ValueBubble
+              key={value.label}
+              value={value}
+              onEvidenceClick={(rect) => openModal("original", idx, rect)}
+            />
+          ))}
         </div>
-      </header>
+      </div>
 
-      <div className="value-bubble-wrap">
-        {valueWeights.map((value, idx) => (
-          <ValueBubble
-            key={value.label}
-            value={value}
-            mode={viewMode}
-            onEvidenceClick={(rect) => openModal(idx, rect)}
-          />
-        ))}
+      <div className="values-section">
+        <header className="section-header values-header">
+          <h2>New Values</h2>
+          {isPreviewing && <span className="values-preview-badge">Previewing decision…</span>}
+        </header>
+        <div className="value-bubble-wrap">
+          {newValues.map((value, idx) => (
+            <ValueBubble
+              key={value.label}
+              value={value}
+              previewing={isPreviewing}
+              onEvidenceClick={(rect) => openModal("new", idx, rect)}
+            />
+          ))}
+        </div>
       </div>
 
       {activeModal &&
         createPortal(
           <ValueEvidenceModal
             value={valueWeights[activeModal.index]}
-            mode={viewMode}
+            mode={activeModal.section}
             anchorRect={activeModal.rect}
             onClose={() => setActiveModal(null)}
           />,
@@ -80,35 +63,20 @@ export default function ValuesPanel({ valueWeights }) {
   )
 }
 
-function ValueBubble({ value, mode, onEvidenceClick }) {
-  const size = 80 + value.weight * 2.1
-  const items = (mode === "original" ? value.evidence : value.calendarEvents) || []
-  const shown = items.slice(0, 4)
-  const slots = innerSlotPositions[Math.max(shown.length - 1, 0)] || []
-  const innerSize = Math.max(34, Math.round(size * 0.34))
+function ValueBubble({ value, previewing, onEvidenceClick }) {
+  const size = 62 + value.weight * 1.9
 
   return (
     <div className="value-bubble-slot">
-      <div
-        className={`value-bubble value-bubble-${value.tone}`}
+      <button
+        type="button"
+        className={`value-bubble value-bubble-${value.tone}${previewing ? " value-bubble-previewing" : ""}`}
         style={{ width: `${size}px`, height: `${size}px` }}
+        onClick={(e) => onEvidenceClick(e.currentTarget.getBoundingClientRect())}
       >
-        {shown.map((item, i) => (
-          <button
-            key={item.id || i}
-            type="button"
-            className="value-bubble-evidence"
-            style={{ ...slots[i], width: `${innerSize}px`, height: `${innerSize}px` }}
-            onClick={(e) => onEvidenceClick(e.currentTarget.getBoundingClientRect())}
-          >
-            {shortLabel(item.text)}
-          </button>
-        ))}
-      </div>
-      <div className="value-bubble-label">
-        <span>{value.label}</span>
-        <strong>{`${value.weight}%`}</strong>
-      </div>
+        <span className="value-bubble-text">{value.label}</span>
+        <strong className="value-bubble-text">{`${value.weight}%`}</strong>
+      </button>
     </div>
   )
 }

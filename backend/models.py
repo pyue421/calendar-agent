@@ -36,6 +36,7 @@ class RoundStatus(str, Enum):
 class EventAction(str, Enum):
     ACCEPT = "accept"
     DECLINE = "decline"
+    POSTPONE = "postpone"
     RESCHEDULE = "reschedule"
     MODIFY = "modify"
     PRIORITIZE = "prioritize"

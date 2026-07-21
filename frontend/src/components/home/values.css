@@ -2,8 +2,27 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 14px 24px 24px;
-  overflow: hidden;
+  padding: 12px 12px 12px;
+  overflow-y: auto;
+}
+
+.values-section {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0;
+}
+
+.values-section:first-child {
+  padding-top: 0;
+}
+
+.values-section + .values-section {
+  border-top: 1px solid #dee5eb;
+  margin: 0 -12px;
+  padding-left: 12px;
+  padding-right: 12px;
 }
 
 .values-header {
@@ -12,44 +31,16 @@
   margin-bottom: 0;
 }
 
-.values-view-toggle {
-  display: flex;
-  align-items: center;
-  background: #ebf0f5;
-  border-radius: 20px;
-  padding: 4px;
-  gap: 0;
-  height: 32px;
-}
-
-.values-view-btn {
-  height: 24px;
-  padding: 0 12px;
-  border-radius: 20px;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  font-family: inherit;
-  color: #3a3a3a;
-  cursor: pointer;
-  transition: background 0.15s ease;
-  white-space: nowrap;
-}
-
-.values-view-btn.active {
-  background: white;
-}
-
 .value-bubble-wrap {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-wrap: wrap;
-  align-content: flex-start;
+  align-content: center;
+  align-items: center;
   justify-content: center;
-  gap: 28px 24px;
-  flex: 1;
-  min-height: 220px;
-  padding: 8px 4px 16px;
-  overflow-y: auto;
+  gap: 14px 16px;
+  padding: 6px 4px 10px;
 }
 
 .value-bubble-slot {
@@ -63,58 +54,53 @@
 
 .value-bubble {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   border-radius: 999px;
   border: 2px solid;
-  transition: transform 0.15s ease;
+  padding: 8px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, width 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .value-bubble:hover {
   transform: scale(1.04);
 }
 
-.value-bubble-evidence {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid #ebebeb;
-  padding: 2px;
-  font-family: inherit;
-  font-size: 9px;
+.value-bubble-previewing {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+.values-preview-badge {
+  font-size: 11px;
   font-weight: 500;
+  color: #6b5bd6;
+  background: #efeaff;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.value-bubble-text {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  text-align: center;
   line-height: 1.15;
-  color: #262626;
-  text-align: center;
-  cursor: pointer;
-  transition: transform 0.12s ease, background 0.12s ease;
 }
 
-.value-bubble-evidence:hover {
-  background: rgba(255, 255, 255, 0.98);
-  transform: translate(-50%, -50%) scale(1.06);
-}
-
-.value-bubble-label {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  text-align: center;
-}
-
-.value-bubble-label span {
-  font-size: 12px;
+.value-bubble-text:first-child {
+  font-size: 11px;
   font-weight: 500;
-  color: #3a3a3a;
 }
 
-.value-bubble-label strong {
-  font-size: 13px;
+.value-bubble-text:last-child {
+  font-size: 12px;
   font-weight: 600;
-  color: #3a3a3a;
 }
 
 .value-evidence-backdrop {
@@ -305,7 +291,7 @@
 }
 
 @media (max-width: 760px) {
-  .value-bubble-label strong {
+  .value-bubble-text:last-child {
     font-size: 15px;
   }
 }

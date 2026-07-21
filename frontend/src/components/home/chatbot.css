@@ -1,6 +1,6 @@
 .chatbot-panel {
-  width: 320px;
-  flex: 0 0 384px;
+  width: 498px;
+  flex: 0 0 498px;
   background: #f8f9fa;
   border-right: 1px solid #dee5eb;
   display: flex;
@@ -9,19 +9,20 @@
   overflow: hidden;
 }
 
-/* Narrow the chatbot column on larger screens so the calendar gets the
-   extra room instead of just growing the side columns proportionally. */
+/* Keep the chatbot column the same width as the values column on larger
+   screens so the calendar gets the extra room instead of just growing the
+   side columns proportionally. */
 @media (min-width: 1024px) {
   .chatbot-panel {
-    width: 340px;
-    flex-basis: 340px;
+    width: 440px;
+    flex-basis: 440px;
   }
 }
 
 @media (min-width: 1280px) {
   .chatbot-panel {
-    width: 320px;
-    flex-basis: 320px;
+    width: 400px;
+    flex-basis: 400px;
   }
 }
 
@@ -149,12 +150,41 @@
   line-height: 1.55;
 }
 
-.meeting-field-input {
-  height: 30px;
+.meeting-input-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
   border: 1px solid #dee5eb;
   border-radius: 8px;
   background: white;
-  padding: 0 12px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.meeting-input-shell:focus-within {
+  border-color: #3f5bff;
+}
+
+.meeting-input-shell-disabled {
+  background: #f1f3f5;
+}
+
+.meeting-input-shell-select {
+  padding-right: 10px;
+}
+
+.meeting-time-shell {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.meeting-field-input {
+  border: none;
+  background: transparent;
+  height: 30px;
+  padding: 0 10px 0 24px;
   font-size: 12px;
   font-family: inherit;
   color: #25252a;
@@ -163,19 +193,31 @@
   outline: none;
 }
 
-.meeting-field-input:focus {
-  border-color: #3f5bff;
+.meeting-input-shell-plain .meeting-field-input {
+  padding-left: 10px;
 }
 
 .meeting-field-input:disabled {
-  background: #f1f3f5;
   color: #8a8f98;
   cursor: not-allowed;
+}
+
+.meeting-field-input[type="time"] {
+  appearance: none;
+}
+
+.meeting-field-input[type="time"]::-webkit-calendar-picker-indicator {
+  display: none;
 }
 
 .meeting-field-select {
   appearance: none;
   cursor: pointer;
+  padding-right: 10px;
+}
+
+.meeting-field-select option {
+  color: #25252a;
 }
 
 .meeting-field-row {
@@ -189,12 +231,6 @@
   width: auto;
 }
 
-.meeting-field-date .meeting-field-input {
-  width: auto;
-  min-width: 88px;
-  padding: 0 10px;
-}
-
 .meeting-field-row .meeting-field:last-child {
   flex: 1 0 0;
   min-width: 0;
@@ -203,24 +239,8 @@
 .meeting-time-range {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
   width: 100%;
-}
-
-.meeting-time-range .meeting-field-input {
-  flex: 1 0 0;
-  min-width: 0;
-}
-
-.meeting-time-range input[type="time"]::-webkit-calendar-picker-indicator {
-  display: none;
-}
-
-/* Tighten the native gap between the minute field and AM/PM */
-.meeting-time-range input[type="time"]::-webkit-datetime-edit-text,
-.meeting-time-range input[type="time"]::-webkit-datetime-edit-ampm-field {
-  padding: 0;
-  margin: 0;
 }
 
 .meeting-time-sep {
@@ -253,15 +273,60 @@
 
 .meeting-decision-row {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.meeting-action-btn {
+  height: 28px;
+  padding: 0 10px;
+  background: white;
+  color: #25252a;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid #dee5eb;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.meeting-action-btn:hover {
+  background: #f8f9fa;
+}
+
+.meeting-action-btn.previewing {
+  background: #eef0f3;
+  border: 1px dashed #ccd2d9;
+}
+
+.meeting-action-btn.confirmed-decline {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.meeting-action-btn.confirmed-postpone {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.meeting-action-btn.confirmed-accept {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
 }
 
 .meeting-reject-btn {
-  height: 22px;
-  padding: 0 6px;
+  height: 28px;
+  padding: 0 10px;
   background: white;
   color: #25252a;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   border: 1px solid #dee5eb;
@@ -282,11 +347,11 @@
 }
 
 .meeting-accept-btn {
-  height: 22px;
-  padding: 0 6px;
+  height: 28px;
+  padding: 0 10px;
   background: #3f5bff;
   color: white;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   border: 1px solid transparent;
@@ -294,6 +359,9 @@
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .meeting-accept-btn:hover {
@@ -304,6 +372,45 @@
   background: #dcfce7;
   border-color: #86efac;
   color: #166534;
+}
+
+.meeting-confirm-row {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.meeting-confirm-decision-btn {
+  height: 28px;
+  padding: 0 10px;
+  background: #3f5bff;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.meeting-confirm-decision-btn:hover {
+  background: #2d47e0;
+}
+
+.meeting-button-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.meeting-button-icon svg {
+  width: 12px;
+  height: 12px;
 }
 
 /* Input area */

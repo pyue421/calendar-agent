@@ -76,7 +76,7 @@ class ChatRequest(BaseModel):
 
 
 class CalendarActionRequest(BaseModel):
-    action: str          # accept | decline | reschedule | modify | prioritize
+    action: str          # accept | decline | postpone | reschedule | modify | prioritize
     event_id: str
     details: dict | None = None
 

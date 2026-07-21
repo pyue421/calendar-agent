@@ -167,11 +167,33 @@ export default function CalendarPanel() {
     setDragging({ event: calEvent, offsetY, rect })
   }
 
-  function handleRemoveEvent(event) {
-    setEvents((evs) => evs.filter((ev) => ev.id !== event.id))
+  function handleRejectEvent(event) {
+    setEvents((evs) =>
+      evs.map((ev) =>
+        ev.id === event.id
+          ? { ...ev, metadata: { ...ev.metadata, rejected: true } }
+          : ev
+      )
+    )
     if (sendCalendarAction) {
       sendCalendarAction("decline", event.id).catch((err) =>
-        console.error("Failed to remove event:", err)
+        console.error("Failed to reject event:", err)
+      )
+    }
+    setSelectedEvent(null)
+  }
+
+  function handleAcceptEvent(event) {
+    setEvents((evs) =>
+      evs.map((ev) =>
+        ev.id === event.id
+          ? { ...ev, metadata: { ...ev.metadata, rejected: false } }
+          : ev
+      )
+    )
+    if (sendCalendarAction) {
+      sendCalendarAction("accept", event.id).catch((err) =>
+        console.error("Failed to accept event:", err)
       )
     }
     setSelectedEvent(null)
@@ -291,13 +313,14 @@ export default function CalendarPanel() {
                     .filter((event) => event.dayIndex === dayIndex)
                     .map((event) => {
                       const isDragSource = dragging && dragging.event.id === event.id
+                      const isRejected = !!event.metadata?.rejected
                       const startMinutes = toMinutes(event.start)
                       const endMinutes = toMinutes(event.end)
                       const duration = endMinutes - startMinutes
                       return (
                         <article
                           key={event.id}
-                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}${isDragSource ? " calendar-event-drag-source" : ""}`}
+                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}${isDragSource ? " calendar-event-drag-source" : ""}${isRejected ? " calendar-event-rejected" : ""}`}
                           style={{
                             top: `${(startMinutes / 60) * ROW_HEIGHT}px`,
                             height: `${(duration / 60) * ROW_HEIGHT}px`,
@@ -340,9 +363,11 @@ export default function CalendarPanel() {
           <EventDetailModal
             event={selectedEvent.event}
             anchorRect={selectedEvent.rect}
+            weekStart={weekStart}
             onClose={() => setSelectedEvent(null)}
             onUseSuggestedTime={() => handleUseSuggestedTime(selectedEvent.event)}
-            onRemove={() => handleRemoveEvent(selectedEvent.event)}
+            onReject={() => handleRejectEvent(selectedEvent.event)}
+            onAccept={() => handleAcceptEvent(selectedEvent.event)}
             onRetitle={(title) => handleRetitleEvent(selectedEvent.event, title)}
             onReschedule={(fields) => handleRescheduleEvent(selectedEvent.event, fields)}
           />,
@@ -352,9 +377,21 @@ export default function CalendarPanel() {
   )
 }
 
-function EventDetailModal({ event, anchorRect, onClose, onUseSuggestedTime, onRemove, onRetitle, onReschedule }) {
+function EventDetailModal({
+  event,
+  anchorRect,
+  weekStart,
+  onClose,
+  onUseSuggestedTime,
+  onReject,
+  onAccept,
+  onRetitle,
+  onReschedule,
+}) {
   const meta = event.metadata || {}
   const hasSuggestion = meta.suggested_start !== undefined
+  const isRejected = !!meta.rejected
+  const currentWeekStart = weekStart || startOfWeekMonday(new Date())
 
   const [title, setTitle] = useState(event.title)
   const [dayIndex, setDayIndex] = useState(event.dayIndex)
@@ -380,7 +417,7 @@ function EventDetailModal({ event, anchorRect, onClose, onUseSuggestedTime, onRe
     onReschedule({ dayIndex, start, end: next })
   }
 
-  const modalWidth = 300
+  const modalWidth = 336
   const gap = 14
   const spaceRight = window.innerWidth - anchorRect.right
   const openLeft = spaceRight < modalWidth + gap + 20
@@ -396,43 +433,53 @@ function EventDetailModal({ event, anchorRect, onClose, onUseSuggestedTime, onRe
       <div className="event-modal" style={{ top, left, width: modalWidth }}>
         <div className="meeting-field">
           <label className="meeting-field-label">Title of the meeting</label>
-          <input
-            className="meeting-field-input"
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={commitTitle}
-          />
+          <div className="meeting-input-shell meeting-input-shell-plain">
+            <input
+              className="meeting-field-input"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={commitTitle}
+            />
+          </div>
         </div>
         <div className="meeting-field-row">
           <div className="meeting-field meeting-field-date">
             <label className="meeting-field-label">Date</label>
-            <select
-              className="meeting-field-input meeting-field-select"
-              value={dayIndex}
-              onChange={(e) => updateDayIndex(Number(e.target.value))}
-            >
-              {WEEKDAY_NAMES.map((name, idx) => (
-                <option key={name} value={idx}>{name}</option>
-              ))}
-            </select>
+            <div className="meeting-input-shell meeting-input-shell-plain meeting-input-shell-select">
+              <select
+                className="meeting-field-input meeting-field-select"
+                value={dayIndex}
+                onChange={(e) => updateDayIndex(Number(e.target.value))}
+              >
+                {WEEKDAY_NAMES.map((name, idx) => (
+                  <option key={name} value={idx}>
+                    {formatLongDate(addDays(currentWeekStart, idx))}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="meeting-field">
             <label className="meeting-field-label">Time</label>
             <div className="meeting-time-range">
-              <input
-                className="meeting-field-input"
-                type="time"
-                value={start}
-                onChange={(e) => updateStart(e.target.value)}
-              />
-              <span className="meeting-time-sep">–</span>
-              <input
-                className="meeting-field-input"
-                type="time"
-                value={end}
-                onChange={(e) => updateEnd(e.target.value)}
-              />
+              <div className="meeting-input-shell meeting-input-shell-plain meeting-time-shell">
+                <input
+                  className="meeting-field-input"
+                  type="time"
+                  value={start}
+                  onChange={(e) => updateStart(e.target.value)}
+                />
+              </div>
+              <span className="meeting-time-sep">-</span>
+              <div className="meeting-input-shell meeting-input-shell-plain meeting-time-shell">
+                <input
+                  className="meeting-field-input"
+                  type="time"
+                  value={end}
+                  onChange={(e) => updateEnd(e.target.value)}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -440,27 +487,52 @@ function EventDetailModal({ event, anchorRect, onClose, onUseSuggestedTime, onRe
           <div className="meeting-field">
             <label className="meeting-field-label">Suggested time</label>
             <div className="meeting-suggested-row">
-              <input
-                className="meeting-field-input"
-                type="text"
-                value={WEEKDAY_NAMES[meta.suggested_day_index]}
-                disabled
-              />
+              <div className="meeting-input-shell meeting-input-shell-plain meeting-suggested-date-shell meeting-input-shell-disabled">
+                <input
+                  className="meeting-field-input"
+                  type="text"
+                  value={formatLongDate(addDays(currentWeekStart, meta.suggested_day_index))}
+                  disabled
+                />
+              </div>
               <div className="meeting-time-range">
-                <input className="meeting-field-input" type="text" value={toDisplayTime(meta.suggested_start)} disabled />
-                <span className="meeting-time-sep">–</span>
-                <input className="meeting-field-input" type="text" value={toDisplayTime(meta.suggested_end)} disabled />
+                <div className="meeting-input-shell meeting-input-shell-plain meeting-time-shell meeting-input-shell-disabled">
+                  <input
+                    className="meeting-field-input"
+                    type="text"
+                    value={toDisplayTime(meta.suggested_start)}
+                    disabled
+                  />
+                </div>
+                <span className="meeting-time-sep">-</span>
+                <div className="meeting-input-shell meeting-input-shell-plain meeting-time-shell meeting-input-shell-disabled">
+                  <input
+                    className="meeting-field-input"
+                    type="text"
+                    value={toDisplayTime(meta.suggested_end)}
+                    disabled
+                  />
+                </div>
               </div>
             </div>
           </div>
         )}
         <div className="meeting-decision-row">
-          <button type="button" className="meeting-reject-btn" onClick={onRemove}>
-            Remove
-          </button>
+          {isRejected ? (
+            <button type="button" className="meeting-accept-btn" onClick={onAccept}>
+              Accept
+            </button>
+          ) : (
+            <button type="button" className="meeting-reject-btn" onClick={onReject}>
+              Reject
+            </button>
+          )}
           {hasSuggestion && (
             <button type="button" className="meeting-accept-btn" onClick={onUseSuggestedTime}>
-              Update to suggested time →
+              Update to suggested time
+              <span className="meeting-button-icon" aria-hidden="true">
+                <ArrowRightIcon />
+              </span>
             </button>
           )}
         </div>
@@ -520,7 +592,37 @@ function toDisplayTime(hhmm) {
   const [hh, mm] = hhmm.split(":").map(Number)
   const suffix = hh >= 12 ? "PM" : "AM"
   const hour12 = hh % 12 === 0 ? 12 : hh % 12
-  return `${hour12}:${String(mm).padStart(2, "0")}${suffix}`
+  return `${hour12}:${String(mm).padStart(2, "0")} ${suffix}`
+}
+
+function formatLongDate(date) {
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden="true">
+      <path
+        d="M2.25 6H9.25"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <path
+        d="M6.75 2.75L10 6L6.75 9.25"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
 }
 
 function isSameDate(a, b) {

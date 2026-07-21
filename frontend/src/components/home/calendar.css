@@ -309,6 +309,17 @@
   opacity: 0.55;
 }
 
+.calendar-event-rejected {
+  background: #f1f3f5 !important;
+  border-left-color: #c1c7cf !important;
+  color: #8a8f98 !important;
+}
+
+.calendar-event-rejected strong,
+.calendar-event-rejected span {
+  text-decoration: line-through;
+}
+
 .calendar-drag-preview {
   z-index: 5;
   opacity: 0.9;
@@ -440,11 +451,19 @@
   width: 100%;
 }
 
-.meeting-suggested-row > .meeting-field-input {
-  flex: 0 0 auto;
-  width: auto;
-  min-width: 56px;
-  padding: 0 10px;
+/* Pin the Date column to the same width in both the editable row and the
+   suggested-time row so the time fields line up between the two lines. */
+.event-modal .meeting-field-date {
+  flex: 0 0 108px;
+  width: 108px;
+}
+
+.event-modal .meeting-field-date .meeting-input-shell {
+  width: 100%;
+}
+
+.event-modal .meeting-time-range {
+  gap: 8px;
 }
 
 .meeting-suggested-row > .meeting-time-range {
@@ -452,10 +471,12 @@
   min-width: 0;
 }
 
-/* Plain disabled <input type="text"> shrinks all the way down under
-   flex, unlike the native <input type="time"> above it — give these an
-   explicit floor so the time boxes don't clip to "12:" / "1:0". */
-.meeting-suggested-row > .meeting-time-range .meeting-field-input {
-  flex: 1 1 auto;
-  min-width: 74px;
+.meeting-suggested-date-shell {
+  flex: 0 0 108px;
+  width: 108px;
+}
+
+.meeting-time-shell {
+  flex: 1 1 0;
+  min-width: 0;
 }

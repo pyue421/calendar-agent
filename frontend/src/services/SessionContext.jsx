@@ -16,6 +16,14 @@ export default function SessionProvider({ children }) {
   const [valueWeights, setValueWeights] = useState([])
   const [roundStatus, setRoundStatus] = useState(null)
   const [loading, setLoading] = useState(false)
+  // Optimistic, client-side-only preview of the "New Values" bubbles while a
+  // scenario decision (accept/decline/postpone) is being considered or has
+  // just been made — see services/valuePreview.js. Null means "show the
+  // real value_weights from the backend". previewConfirmed distinguishes an
+  // unconfirmed preview (dimmed bubbles) from a confirmed decision (full-color
+  // bubbles showing the previewed weights until the round completes).
+  const [previewValueWeights, setPreviewValueWeights] = useState(null)
+  const [previewConfirmed, setPreviewConfirmed] = useState(false)
 
   // Create session on mount
   useEffect(() => {
@@ -110,7 +118,12 @@ export default function SessionProvider({ children }) {
         method: "POST",
       })
       const data = await res.json()
-      if (data.value_weights) setValueWeights(data.value_weights)
+      if (data.value_weights) {
+        setValueWeights(data.value_weights)
+        // Real weights just landed — drop the optimistic preview override.
+        setPreviewValueWeights(null)
+        setPreviewConfirmed(false)
+      }
       return data
     } finally {
       setLoading(false)
@@ -135,6 +148,10 @@ export default function SessionProvider({ children }) {
         phase,
         calendarEvents,
         valueWeights,
+        previewValueWeights,
+        setPreviewValueWeights,
+        previewConfirmed,
+        setPreviewConfirmed,
         roundStatus,
         loading,
         createSession,
