@@ -310,3 +310,8 @@
   }
 }
 .values-empty { margin: 18px; color: #68707b; font-size: 13px; line-height: 1.5; }
+.values-info-button { margin-top: 4px; padding: 0; border: 0; color: #5261d8; background: transparent; font-size: 11px; cursor: pointer; text-decoration: underline; }
+.values-method-note { margin: 0 14px 12px; padding: 10px; border-radius: 8px; background: #f1f3ff; color: #555e70; font-size: 11px; line-height: 1.45; }
+.values-method-note p { margin: 0 0 6px; }
+.values-method-note p:last-child { margin-bottom: 0; }
+.value-evidence-modal-list { max-height: 310px; overflow-y: auto; }

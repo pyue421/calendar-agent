@@ -14,41 +14,33 @@ async function request(path, options = {}) {
 
 function displayValues(profile = []) {
   const tones = ["green", "rose", "amber", "cyan", "violet"]
-  return profile.map((value, index) => ({...value, weight: Math.round(value.weight), tone: tones[index % tones.length],
-    evidence: [{id: `${value.id}-posterior`, text: "Committed scheduling and explanation evidence", round: 0}],
-    calendarEvents: [{id: `${value.id}-uncertainty`, text: `Posterior uncertainty ±${value.uncertainty}%`, round: 0}]}))
+  return profile.map((value, index) => ({...value, weight: value.relative_weight, tone: tones[index],
+    evidence: value.conversation_evidence || [], calendarEvents: value.calendar_action_evidence || []}))
 }
 
 export default function SessionProvider({children}) {
   const [sessionId, setSessionId] = useState(null)
-  const [state, setState] = useState({current_round: 0, total_rounds: 15, calibration_complete: false, round_status: "loading"})
-  const [calibration, setCalibration] = useState(null)
+  const [state, setState] = useState({current_round: 0, total_rounds: 15, profile_status: "uninitialized", round_status: "loading"})
   const [event, setEvent] = useState(null)
   const [currentProfile, setCurrentProfile] = useState([])
   const [preview, setPreview] = useState(null)
   const [candidateEvent, setCandidateEvent] = useState(null)
   const [calendarEvents, setCalendarEvents] = useState([])
   const [loading, setLoading] = useState(true)
-
-  const applyState = useCallback((data) => {
-    setState(prev => ({...prev, ...data})); if (data.current_profile) setCurrentProfile(data.current_profile)
+  const applyState = useCallback(data => {
+    setState(previous => ({...previous, ...data}))
+    if (data.current_profile) setCurrentProfile(data.current_profile)
     if (data.calendar) setCalendarEvents(data.calendar)
   }, [])
-
   const initialize = useCallback(async () => {
     setLoading(true)
     try {
       const session = await request("/api/sessions", {method: "POST", body: JSON.stringify({participant_id: `participant_${Date.now()}`})})
       setSessionId(session.session_id); applyState(session)
-      const questions = await request(`/api/sessions/${session.session_id}/calibration`); setCalibration(questions)
     } finally { setLoading(false) }
   }, [applyState])
   useEffect(() => { initialize().catch(console.error) }, [initialize])
 
-  async function submitCalibration(questionId, choice, rationale) {
-    const data = await request(`/api/sessions/${sessionId}/calibration/responses`, {method: "POST", body: JSON.stringify({question_id: questionId, choice, rationale})})
-    applyState({...data, current_profile: data.baseline_profile}); setCalibration(prev => ({...prev, responses: data.next_question_index, complete: data.calibration_complete})); return data
-  }
   async function startRound() {
     const data = await request(`/api/sessions/${sessionId}/events/next`, {method: "POST"}); applyState(data)
     if (data.event) setEvent(data.event); return data
@@ -65,9 +57,7 @@ export default function SessionProvider({children}) {
     const data = await request(`/api/sessions/${sessionId}/chat`, {method: "POST", body: JSON.stringify({message})})
     applyState(data); if (data.rationale_recorded) setEvent(null); return data
   }
-
-  return <SessionContext.Provider value={{sessionId, ...state, calibration, event, currentProfile,
-    valueWeights: displayValues(currentProfile), preview, candidateEvent, setCandidateEvent, calendarEvents, loading,
-    submitCalibration, startRound, loadPreview, commitDecision, sendChat, clearPreview: () => setPreview(null),
-    sendCalendarAction: async () => ({calendar_events: calendarEvents})}}>{children}</SessionContext.Provider>
+  return <SessionContext.Provider value={{sessionId, ...state, event, currentProfile, valueWeights: displayValues(currentProfile),
+    preview, candidateEvent, setCandidateEvent, calendarEvents, loading, startRound, loadPreview, commitDecision, sendChat,
+    clearPreview: () => setPreview(null), sendCalendarAction: async () => ({calendar_events: calendarEvents})}}>{children}</SessionContext.Provider>
 }

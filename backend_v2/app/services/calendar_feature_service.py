@@ -24,9 +24,10 @@ def action_features(scenario: dict, candidate_schedule: dict | None = None) -> d
         protected = any(e.get("protected") and datetime.fromisoformat(e["start"]) < datetime.fromisoformat(candidate_schedule["end"])
                         and datetime.fromisoformat(e["end"]) > start for e in scenario.get("calendar", []))
         features["reschedule"] = _vector(
-            autonomy=0.45, collaboration=max(0.05, 0.55 - delay_days * 0.08),
-            reliability=max(0.05, 0.5 - delay_days * 0.1), wellbeing=0.35 if not outside_hours else -0.35,
-            boundaries=-0.55 if outside_hours or protected else 0.25, relationships=-0.25 * conflicts,
-            fairness=-0.2 * conflicts, achievement=0.25 if conflicts == 0 else -0.2,
+            wellbeing=0.4 if not outside_hours else -0.6,
+            achievement_growth=max(-0.5, 0.35 - delay_days * 0.08 - conflicts * 0.15),
+            relationships_care=max(-0.5, 0.25 - conflicts * 0.2),
+            autonomy_privacy=-0.6 if protected else (0.45 if not outside_hours else -0.25),
+            responsibility_fairness=max(-0.5, 0.55 - delay_days * 0.1 - conflicts * 0.2),
         )
     return features

@@ -1,0 +1,12 @@
+[
+ {"id":"team_sync","title":"Team sync","day_index":0,"start_time":"09:30","end_time":"10:15","category":"meeting","protected":false,"flexibility":"medium","attendees":["Project team"]},
+ {"id":"focus_monday","title":"Protected focus time","day_index":0,"start_time":"14:30","end_time":"16:30","category":"focus","protected":true,"flexibility":"low"},
+ {"id":"exercise","title":"Exercise and recovery","day_index":0,"start_time":"18:00","end_time":"19:00","category":"wellbeing","protected":true,"flexibility":"medium"},
+ {"id":"delivery_work","title":"Client delivery work","day_index":1,"start_time":"09:00","end_time":"11:30","category":"work","protected":true,"flexibility":"low"},
+ {"id":"appointment","title":"Personal appointment","day_index":1,"start_time":"12:00","end_time":"13:00","category":"personal","protected":true,"flexibility":"low"},
+ {"id":"development","title":"Professional development","day_index":2,"start_time":"13:00","end_time":"14:30","category":"learning","protected":false,"flexibility":"medium"},
+ {"id":"planning","title":"Weekly planning","day_index":2,"start_time":"09:00","end_time":"10:00","category":"meeting","protected":false,"flexibility":"high","attendees":["Operations team"]},
+ {"id":"family_dinner","title":"Family dinner","day_index":2,"start_time":"18:00","end_time":"19:30","category":"relationships","protected":true,"flexibility":"low","attendees":["Family"]},
+ {"id":"deep_work","title":"Independent deep work","day_index":3,"start_time":"10:00","end_time":"12:00","category":"focus","protected":true,"flexibility":"low"},
+ {"id":"social_commitment","title":"Friend catch-up","day_index":4,"start_time":"17:00","end_time":"18:30","category":"relationships","protected":false,"flexibility":"medium","attendees":["Friend"]}
+]

@@ -8,11 +8,12 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class ModelConfig:
-    particle_count: int = 800
-    beta: float = 5.0
-    rationale_reliability: float = 0.65
-    resample_ess_ratio: float = 0.45
-    seed: int = 421
+    grid_step: float = float(os.getenv("GRID_STEP", "0.025"))
+    prior_family: str = os.getenv("PRIOR_FAMILY", "symmetric_dirichlet")
+    prior_alpha: float = float(os.getenv("PRIOR_ALPHA", "1.0"))
+    beta: float = float(os.getenv("BETA", "5.0"))
+    rationale_reliability: float = float(os.getenv("RATIONALE_RELIABILITY", "0.65"))
+    evidence_delta_threshold: float = float(os.getenv("EVIDENCE_DELTA_THRESHOLD", "0.005"))
 
 
 CONFIG = ModelConfig()

@@ -23,6 +23,7 @@ function shortLabel(text, maxWords = 3) {
 export default function ValuesPanel({ valueWeights }) {
   const [viewMode, setViewMode] = useState("original")
   const [activeModal, setActiveModal] = useState(null)
+  const [showInfo, setShowInfo] = useState(false)
 
   function openModal(index, rect) {
     setActiveModal((cur) => (cur && cur.index === index ? null : { index, rect }))
@@ -36,27 +37,27 @@ export default function ValuesPanel({ valueWeights }) {
   return (
     <section className="home-values-card">
       <header className="section-header values-header">
-        <h2>Values in Your Solution</h2>
+        <div><h2>Current Values</h2><button type="button" className="values-info-button" onClick={() => setShowInfo(value => !value)}>How are these bubbles calculated?</button></div>
         <div className="values-view-toggle">
           <button
             type="button"
             className={`values-view-btn${viewMode === "original" ? " active" : ""}`}
             onClick={() => switchMode("original")}
           >
-            Original
+            Conversation
           </button>
           <button
             type="button"
             className={`values-view-btn${viewMode === "new" ? " active" : ""}`}
             onClick={() => switchMode("new")}
           >
-            New
+            Calendar actions
           </button>
         </div>
       </header>
 
       <div className="value-bubble-wrap">
-        {valueWeights.length === 0 && <p className="values-empty">Complete baseline calibration to create your current profile.</p>}
+        {valueWeights.length === 0 && <p className="values-empty">Your value profile will begin to appear after your first scheduling decision and reflection.</p>}
         {valueWeights.map((value, idx) => (
           <ValueBubble
             key={value.label}
@@ -66,6 +67,8 @@ export default function ValuesPanel({ valueWeights }) {
           />
         ))}
       </div>
+
+      {showInfo && <div className="values-method-note"><p>The system begins from a hidden symmetric mathematical prior; that prior is not shown as your values. Your first committed profile appears after your first action and explanation.</p><p>Decisions and explanations update a Bayesian choice model. Bubble size is the posterior expected relative scheduling priority under this model—not confidence, personality, or objective importance. Uncertainty and exact evidence are shown separately.</p></div>}
 
       {activeModal &&
         createPortal(
@@ -84,7 +87,7 @@ export default function ValuesPanel({ valueWeights }) {
 function ValueBubble({ value, mode, onEvidenceClick }) {
   const size = 80 + value.weight * 2.1
   const items = (mode === "original" ? value.evidence : value.calendarEvents) || []
-  const shown = items.slice(0, 4)
+  const shown = [...items].sort((a, b) => Math.abs(b.posterior_delta) - Math.abs(a.posterior_delta)).slice(0, 4)
   const slots = innerSlotPositions[Math.max(shown.length - 1, 0)] || []
   const innerSize = Math.max(34, Math.round(size * 0.34))
 
@@ -102,21 +105,20 @@ function ValueBubble({ value, mode, onEvidenceClick }) {
             style={{ ...slots[i], width: `${innerSize}px`, height: `${innerSize}px` }}
             onClick={(e) => onEvidenceClick(e.currentTarget.getBoundingClientRect())}
           >
-            {shortLabel(item.text)}
+            {shortLabel(item.exact_text)}
           </button>
         ))}
       </div>
       <div className="value-bubble-label">
         <span>{value.label}</span>
-        <strong>{`${value.weight}%`}</strong>
       </div>
     </div>
   )
 }
 
 function ValueEvidenceModal({ value, mode, anchorRect, onClose }) {
-  const items = ((mode === "original" ? value.evidence : value.calendarEvents) || []).slice(0, 4)
-  const modalWidth = 254
+  const items = (mode === "original" ? value.evidence : value.calendarEvents) || []
+  const modalWidth = 330
   const gap = 14
   const spaceRight = window.innerWidth - anchorRect.right
   const openLeft = spaceRight < modalWidth + gap + 20
@@ -131,13 +133,13 @@ function ValueEvidenceModal({ value, mode, anchorRect, onClose }) {
       <div className="value-evidence-backdrop" onClick={onClose} />
       <div className="value-evidence-modal" style={{ top, left, width: modalWidth }}>
         <div className="value-evidence-modal-header">
-          <p>{`${value.label}: ${value.weight}%`}</p>
+          <p>{value.label}</p>
           <button type="button" aria-label="Close" onClick={onClose}>
             ×
           </button>
         </div>
         <p className="value-evidence-modal-subhead">
-          {mode === "original" ? "Extracted from your conversation" : "Extracted from your calendar actions"}
+          {`Estimated relative scheduling priority: ${value.relative_weight.toFixed(1)}% · 90% interval ${(value.credible_interval_90.lower * 100).toFixed(1)}–${(value.credible_interval_90.upper * 100).toFixed(1)}%`}
         </p>
         <div className="value-evidence-modal-list">
           {items.length === 0 && (
@@ -146,9 +148,10 @@ function ValueEvidenceModal({ value, mode, anchorRect, onClose }) {
           {items.map((item, i) => (
             <div key={item.id || i} className="value-evidence-modal-item">
               <p className="value-evidence-modal-quote">
-                {mode === "original" ? `"${item.text}"` : item.text}
+                {mode === "original" ? `“${item.exact_text}”` : item.exact_text}
               </p>
-              <p className="value-evidence-modal-meta">{`Round ${item.round}`}</p>
+              <p className="value-evidence-modal-meta">{`Round ${item.round} · ${item.event_title} · ${item.scenario_id} · ${item.source_phase}`}</p>
+              <p className="value-evidence-modal-meta">{`${(item.posterior_before * 100).toFixed(1)}% → ${(item.posterior_after * 100).toFixed(1)}% (${item.posterior_delta >= 0 ? "+" : ""}${(item.posterior_delta * 100).toFixed(2)} points, ${item.direction}${item.directness ? `, ${item.directness}` : ""})`}</p>
             </div>
           ))}
         </div>

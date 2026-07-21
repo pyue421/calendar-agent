@@ -389,10 +389,6 @@
 .chatbot-message-meta { font-size: 11px; color: #7c7c8a; margin-bottom: 4px; }
 .chatbot-thinking { opacity: .5; }
 .round-controls { display: flex; justify-content: center; padding: 0 12px 6px; }
-.calibration-card textarea { resize: vertical; min-height: 58px; }
-.calibration-options { display: grid; gap: 8px; margin: 10px 0 14px; }
-.calibration-option { padding: 10px; text-align: left; border: 1px solid #d6dce4; border-radius: 8px; background: white; cursor: pointer; }
-.calibration-option:hover, .calibration-option:focus-visible, .calibration-option.selected { border-color: #5665df; background: #f2f4ff; outline: none; }
 .scenario-decision-card .meeting-card-body { display: grid; gap: 10px; }
 .requester-line { color: #68707b; font-size: 12px; margin: 0; }
 .decision-region { display: grid; gap: 5px; padding: 11px; border: 1px solid #dfe4ea; border-radius: 9px; background: #fbfcfd; }

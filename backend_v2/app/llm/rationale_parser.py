@@ -20,18 +20,11 @@ assistant message. Do not assign weights, scores, confidence numbers, or psychol
 constraints from values. Preserve ambiguity and include plausible non-value explanations when warranted.
 
 Allowed value identifiers and participant-facing meanings:
-- wellbeing: health, rest, energy, sustainable pace
-- achievement: completing goals, productivity, accomplishment
-- reliability: keeping promises, punctuality, dependability
-- relationships: caring for and maintaining personal relationships
-- autonomy: choice, control, self-direction
-- collaboration: coordinating and working with others
-- fairness: equitable distribution of burden or opportunity
-- growth: learning, practice, development
-- privacy: control over personal information or solitude
-- community_contribution: helping a wider group or community
-- boundaries: protecting personal time or role limits
-- security: safety, stability, risk reduction
+- wellbeing: health, rest, boundaries, and personal sustainability
+- achievement_growth: progress, mastery, learning, and professional development
+- relationships_care: family, friendship, social support, and community care
+- autonomy_privacy: control over time, independence, focus, and privacy
+- responsibility_fairness: reliability, cooperation, promises, integrity, and fairness
 
 Only return value identifiers from this vocabulary. Quote or closely paraphrase commitments and constraints from
 the participant; do not invent them. Explicit references are directly stated. Implicit references require a clear
@@ -98,12 +91,11 @@ class GeminiRationaleParser:
 
 
 KEYWORDS = {
-    "wellbeing": ("rest", "health", "wellbeing", "energy"), "achievement": ("deadline", "work", "finish", "productive"),
-    "reliability": ("promise", "committed", "reliable", "on time"), "relationships": ("family", "friend", "relationship"),
-    "autonomy": ("choice", "control", "prefer"), "collaboration": ("team", "together", "collaborate"),
-    "fairness": ("fair", "equal"), "growth": ("learn", "growth", "practice"), "privacy": ("private", "privacy"),
-    "community_contribution": ("community", "volunteer"), "boundaries": ("boundary", "personal time", "outside work"),
-    "security": ("safe", "security", "risk"),
+    "wellbeing": ("rest", "health", "wellbeing", "energy", "boundary", "personal time"),
+    "achievement_growth": ("deadline", "finish", "productive", "learn", "growth", "practice", "develop"),
+    "relationships_care": ("family", "friend", "relationship", "community", "care", "support"),
+    "autonomy_privacy": ("choice", "control", "prefer", "focus", "private", "privacy", "independent"),
+    "responsibility_fairness": ("promise", "committed", "reliable", "on time", "team", "collaborate", "fair", "equal", "responsible"),
 }
 
 

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .models import CalibrationResponse, ChatRequest, DecisionRequest, PreviewRequest, RationaleRequest, SessionCreate
+from .models import ChatRequest, DecisionRequest, PreviewRequest, RationaleRequest, SessionCreate
 from .llm.rationale_parser import RationaleParserConfigurationError, RationaleParserError
 from .config import LLM_CONFIG
 from .services.session_service import sessions
@@ -43,15 +43,6 @@ def state(sid: str): return call(sessions.state, sid)
 
 @app.post("/api/sessions/{sid}/events/next")
 def next_event(sid: str): return call(sessions.next_event, sid)
-
-
-@app.get("/api/sessions/{sid}/calibration")
-def calibration(sid: str): return call(sessions.calibration_questions, sid)
-
-
-@app.post("/api/sessions/{sid}/calibration/responses")
-def calibration_response(sid: str, body: CalibrationResponse):
-    return call(sessions.calibrate, sid, body.question_id, body.choice, body.rationale)
 
 
 @app.post("/api/sessions/{sid}/previews")

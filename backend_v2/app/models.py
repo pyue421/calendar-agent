@@ -47,12 +47,6 @@ class RationaleRequest(BaseModel):
     rationale: str = Field(min_length=1, max_length=4000)
 
 
-class CalibrationResponse(BaseModel):
-    question_id: str
-    choice: Literal["a", "b"]
-    rationale: str = Field(min_length=1, max_length=2000)
-
-
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
@@ -71,7 +65,7 @@ class RationaleObservation(BaseModel):
     @field_validator("explicit_value_references", "implicit_value_references")
     @classmethod
     def validate_value_ids(cls, values: list[str]) -> list[str]:
-        allowed = {"wellbeing", "achievement", "reliability", "relationships", "autonomy", "collaboration", "fairness", "growth", "privacy", "community_contribution", "boundaries", "security"}
+        allowed = {"wellbeing", "achievement_growth", "relationships_care", "autonomy_privacy", "responsibility_fairness"}
         unknown = set(values) - allowed
         if unknown:
             raise ValueError(f"Unknown value identifiers: {sorted(unknown)}")

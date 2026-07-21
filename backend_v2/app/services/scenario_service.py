@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from google.genai import types
 
 from ..config import LLM_CONFIG, LLMConfig
 from ..llm.rationale_parser import gemini_compatible_schema
+from .bayesian_value_model import VALUE_IDS
 
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -41,6 +43,12 @@ class ScenarioBank:
         self.scenarios = json.loads(path.read_text(encoding="utf-8"))
         if len(self.scenarios) != 15 or len({s["scenario_id"] for s in self.scenarios}) != 15:
             raise ValueError("Scenario bank must contain exactly 15 unique scenarios")
+        for scenario in self.scenarios:
+            for action, vector in scenario["action_features"].items():
+                if set(vector) != set(VALUE_IDS):
+                    raise ValueError(f"{scenario['scenario_id']} {action} must contain exactly the five value IDs")
+                if not all(math.isfinite(value) and -1 <= value <= 1 for value in vector.values()):
+                    raise ValueError(f"{scenario['scenario_id']} {action} contains an invalid feature value")
         self.by_id = {s["scenario_id"]: s for s in self.scenarios}
 
     def get(self, scenario_id: str) -> dict:
@@ -74,10 +82,10 @@ class ScenarioGenerator:
         except Exception:
             return fallback
 
-    def generate(self, specification: dict, calendar: list[dict], current_round: int, participant_context: dict | None = None) -> GeneratedScenario:
+    def generate(self, specification: dict, calendar: list[dict], current_round: int, week_start: str, participant_context: dict | None = None) -> GeneratedScenario:
         surface = self._surface(specification, current_round, participant_context)
-        base = datetime(2026, 7, 21, specification["hour"])
-        start = base + timedelta(days=specification["day_offset"] - 1)
+        base = datetime.fromisoformat(week_start)
+        start = base + timedelta(days=specification["day_index"], hours=specification["hour"])
         end = start + timedelta(minutes=specification["duration_minutes"])
         conflicts = [e["id"] for e in calendar if datetime.fromisoformat(e["start"]) < end and datetime.fromisoformat(e["end"]) > start]
         if not conflicts:
