@@ -37,7 +37,7 @@
   overflow: hidden;
 }
 
-/* Narrow the values/goals column on larger screens so the calendar gets
+/* Narrow the values column on larger screens so the calendar gets
    the extra room instead of just growing the right column proportionally. */
 @media (min-width: 1024px) {
   .home-right-column {
@@ -54,12 +54,6 @@
 }
 
 .home-right-column > .home-values-card {
-  border-bottom: 1px solid #dee5eb;
-  flex: 1 1 0;
-  min-height: 0;
-}
-
-.home-right-column > .goals-panel {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;

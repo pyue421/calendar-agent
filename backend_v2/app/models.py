@@ -51,6 +51,22 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
 
+class CalendarActionRequest(BaseModel):
+    action_type: Literal["reschedule_existing", "remove_existing", "modify_existing"]
+    event_id: str
+    new_schedule: Schedule | None = None
+    changes: dict | None = None
+    source: Literal["calendar_drag", "calendar_event_modal"]
+
+    @model_validator(mode="after")
+    def validate_payload(self):
+        if self.action_type == "reschedule_existing" and self.new_schedule is None:
+            raise ValueError("new_schedule is required for reschedule_existing")
+        if self.action_type == "modify_existing" and not self.changes:
+            raise ValueError("changes are required for modify_existing")
+        return self
+
+
 class RationaleObservation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

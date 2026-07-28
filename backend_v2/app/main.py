@@ -1,10 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .models import ChatRequest, DecisionRequest, PreviewRequest, RationaleRequest, SessionCreate
-from .llm.rationale_parser import RationaleParserConfigurationError, RationaleParserError
+from .models import CalendarActionRequest, ChatRequest, DecisionRequest, PreviewRequest, RationaleRequest, SessionCreate
+from .llm.rationale_parser import RationaleParserConfigurationError, RationaleParserError, RationaleParserUnavailableError
 from .config import LLM_CONFIG
 from .services.session_service import sessions
+from .services.calendar_conflict_service import CalendarConflictError
 
 app = FastAPI(title="Calendar Reflection API", version="2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
@@ -15,10 +16,14 @@ def call(fn, *args):
         return fn(*args)
     except KeyError:
         raise HTTPException(404, "Session not found")
+    except CalendarConflictError as exc:
+        raise HTTPException(409, exc.detail())
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     except RationaleParserConfigurationError as exc:
         raise HTTPException(503, str(exc))
+    except RationaleParserUnavailableError as exc:
+        raise HTTPException(503, {"code": "llm_temporarily_unavailable", "message": str(exc), "retryable": True})
     except RationaleParserError as exc:
         raise HTTPException(502, str(exc))
 
@@ -53,6 +58,12 @@ def preview(sid: str, body: PreviewRequest):
 @app.post("/api/sessions/{sid}/decisions")
 def decision(sid: str, body: DecisionRequest):
     return call(sessions.decide, sid, body.event_id, body.action, body.candidate_schedule.model_dump() if body.candidate_schedule else None)
+
+
+@app.post("/api/sessions/{sid}/calendar-actions")
+def calendar_action(sid: str, body: CalendarActionRequest):
+    return call(sessions.calendar_action, sid, body.action_type, body.event_id,
+                body.new_schedule.model_dump() if body.new_schedule else None, body.changes, body.source)
 
 
 @app.post("/api/sessions/{sid}/rationales")

@@ -372,6 +372,29 @@
   height: 12px;
 }
 
+.meeting-reschedule-btn {
+  height: 22px;
+  padding: 0 6px;
+  background: white;
+  color: #3048c9;
+  font: 600 12px inherit;
+  border: 1px solid #91a0ed;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.meeting-decision-row button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.meeting-schedule-error {
+  width: 100%;
+  margin: -5px 0 0;
+  color: #9b2c2c;
+  font-size: 11px;
+}
+
 .reflection-panel { min-width: 330px; }
 .reflection-content { padding: 20px; overflow-y: auto; color: #34343b; }
 .reflection-content h3 { margin: 6px 0 10px; font-size: 18px; }
@@ -389,12 +412,7 @@
 .chatbot-message-meta { font-size: 11px; color: #7c7c8a; margin-bottom: 4px; }
 .chatbot-thinking { opacity: .5; }
 .round-controls { display: flex; justify-content: center; padding: 0 12px 6px; }
-.scenario-decision-card .meeting-card-body { display: grid; gap: 10px; }
-.requester-line { color: #68707b; font-size: 12px; margin: 0; }
-.decision-region { display: grid; gap: 5px; padding: 11px; border: 1px solid #dfe4ea; border-radius: 9px; background: #fbfcfd; }
-.decision-region:hover, .decision-region:focus-within { border-color: #8792e8; box-shadow: 0 0 0 2px rgba(86,101,223,.08); }
-.decision-region > span { color: #69727d; font-size: 12px; }
-.decision-region > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.scenario-decision-card .meeting-card-body { align-items: stretch; }
 .decision-recorded { color: #2f6f44; font-weight: 600; font-size: 12px; }
 .value-preview-popover { position: fixed; z-index: 1200; width: 620px; max-width: calc(100vw - 16px); max-height: 380px; overflow: auto; padding: 14px; border: 1px solid #ccd4df; border-radius: 12px; background: white; box-shadow: 0 16px 45px rgba(25,31,42,.22); }
 .value-preview-popover header { display: flex; justify-content: space-between; align-items: start; }
@@ -406,3 +424,8 @@
 .popover-bubble-slot { display: flex; flex-direction: column; align-items: center; width: 88px; font-size: 10px; }
 .popover-bubble-slot .value-bubble { max-width: 74px; max-height: 74px; min-width: 40px; min-height: 40px; }
 .popover-bubble-slot small { color: #7b8490; }
+.preview-loading { min-height: 130px; display: grid; place-items: center; }
+.meeting-action-target { display: inline-flex; }
+.availability-popover { position: fixed; z-index: 1200; width: 300px; padding: 12px; border: 1px solid #ef9a9a; border-radius: 10px; background: #fff8f8; box-shadow: 0 12px 30px rgba(25,31,42,.18); color: #552121; }
+.availability-popover p { margin: 6px 0; font-size: 12px; line-height: 1.4; }
+.availability-popover small { color: #765050; }

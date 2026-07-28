@@ -62,7 +62,7 @@ def test_round_one_starts_uninitialized_without_calibration():
 def test_first_preview_and_action_stay_hidden_until_rationale():
     sid, _ = create_session(); event = start(sid)["event"]
     internal_before = sessions.get(sid)["model"].posterior.copy()
-    preview = client.post(f"/api/sessions/{sid}/previews", json={"event_id": event["scenario_id"], "action": "accept", "display_state": "hover"}).json()
+    preview = client.post(f"/api/sessions/{sid}/previews", json={"event_id": event["scenario_id"], "action": "decline", "display_state": "hover"}).json()
     assert preview["current_profile"] == [] and preview["profile_status"] == "uninitialized"
     assert len(preview["preview_profile"]) == 5
     assert np.array_equal(sessions.get(sid)["model"].posterior, internal_before)
@@ -102,13 +102,12 @@ def test_actions_and_candidate_times_have_distinct_non_mutating_previews():
     sid, _ = create_session(); event = start(sid)["event"]
     before = sessions.get(sid)["model"].posterior.copy()
     bodies = [
-        {"event_id": event["scenario_id"], "action": "accept"},
         {"event_id": event["scenario_id"], "action": "decline"},
-        {"event_id": event["scenario_id"], "action": "reschedule", "candidate_schedule": {"start": event["requested_start"], "end": event["requested_end"]}},
         {"event_id": event["scenario_id"], "action": "reschedule", "candidate_schedule": {"start": event["requested_start"][:11] + "20:00:00", "end": event["requested_start"][:11] + "21:00:00"}},
+        {"event_id": event["scenario_id"], "action": "reschedule", "candidate_schedule": {"start": event["requested_start"][:11] + "21:00:00", "end": event["requested_start"][:11] + "22:00:00"}},
     ]
     profiles = [client.post(f"/api/sessions/{sid}/previews", json=body).json()["preview_profile"] for body in bodies]
-    assert len({str(profile) for profile in profiles}) == 4
+    assert len({str(profile) for profile in profiles}) == 3
     assert np.array_equal(sessions.get(sid)["model"].posterior, before)
 
 

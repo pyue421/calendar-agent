@@ -22,11 +22,14 @@ function mapEvent(ev) {
     category: ev.category || "work",
     isNew: ev.is_new ?? ev.isNew ?? false,
     metadata: ev.metadata || {},
+    blocksTime: ev.blocks_time !== false,
+    temporary: Boolean(ev.temporary),
+    invalid: Boolean(ev.invalid),
   }
 }
 
 export default function CalendarPanel() {
-  const { calendarEvents, candidateEvent, sendCalendarAction } = useSession()
+  const { calendarEvents, candidateEvent, sendCalendarAction, calendarActionError } = useSession()
 
   const [weekOffset, setWeekOffset] = useState(0)
   const [events, setEvents] = useState([])
@@ -82,7 +85,8 @@ export default function CalendarPanel() {
       let startMinute = Math.round(rawStartMinute / 15) * 15
       startMinute = Math.max(0, Math.min(startMinute, 24 * 60 - duration))
       const endMinute = startMinute + duration
-      return { dayIndex, startMinute, endMinute }
+      const conflicts = findLocalConflicts(events, dragging.event.id, dayIndex, minutesToTime(startMinute), minutesToTime(endMinute))
+      return { dayIndex, startMinute, endMinute, conflicts }
     }
 
     const CLICK_MOVE_THRESHOLD = 4 // px — below this, treat mouseup as a click, not a drag
@@ -121,6 +125,10 @@ export default function CalendarPanel() {
         const newEnd = minutesToTime(slot.endMinute)
         const oldEvent = dragging.event
 
+        if (oldEvent.temporary || slot.conflicts.length) {
+          dragPreviewRef.current = null; setDragPreview(null); setDragging(null); return
+        }
+
         // Update local state immediately
         setEvents((evs) =>
           evs.map((ev) =>
@@ -132,14 +140,9 @@ export default function CalendarPanel() {
 
         // Log behavioral signal to backend
         if (sendCalendarAction) {
-          sendCalendarAction("reschedule", oldEvent.id, {
-            original_day: oldEvent.dayIndex,
-            original_start: oldEvent.start,
-            original_end: oldEvent.end,
-            new_day_index: slot.dayIndex,
-            new_start: newStart,
-            new_end: newEnd,
-          }).catch((err) => console.error("Failed to log calendar action:", err))
+          sendCalendarAction({action_type: "reschedule_existing", event_id: oldEvent.id,
+            new_schedule: slotSchedule(visibleDays, slot.dayIndex, newStart, newEnd), source: "calendar_drag"})
+            .catch((err) => { setEvents(evs => evs.map(ev => ev.id === oldEvent.id ? oldEvent : ev)); console.error("Failed to move calendar event:", err) })
         }
       }
       dragPreviewRef.current = null
@@ -157,11 +160,12 @@ export default function CalendarPanel() {
       window.removeEventListener("mousemove", onMouseMove)
       window.removeEventListener("mouseup", onMouseUp)
     }
-  }, [dragging, sendCalendarAction])
+  }, [dragging, events, sendCalendarAction, visibleDays])
 
   function onEventMouseDown(e, calEvent) {
     e.stopPropagation()
     e.preventDefault()
+    if (calEvent.temporary) return
     const rect = e.currentTarget.getBoundingClientRect()
     const offsetY = e.clientY - rect.top
     movedRef.current = false
@@ -172,26 +176,21 @@ export default function CalendarPanel() {
   function handleRemoveEvent(event) {
     setEvents((evs) => evs.filter((ev) => ev.id !== event.id))
     if (sendCalendarAction) {
-      sendCalendarAction("decline", event.id).catch((err) =>
-        console.error("Failed to remove event:", err)
-      )
+      sendCalendarAction({action_type: "remove_existing", event_id: event.id, source: "calendar_event_modal"})
+        .catch((err) => { setEvents(calendarEvents.map(mapEvent)); console.error("Failed to remove event:", err) })
     }
     setSelectedEvent(null)
   }
 
   function handleRescheduleEvent(event, { dayIndex, start, end }) {
+    if (findLocalConflicts(events, event.id, dayIndex, start, end).length) return
     setEvents((evs) =>
       evs.map((ev) => (ev.id === event.id ? { ...ev, dayIndex, start, end } : ev))
     )
     if (sendCalendarAction) {
-      sendCalendarAction("reschedule", event.id, {
-        original_day: event.dayIndex,
-        original_start: event.start,
-        original_end: event.end,
-        new_day_index: dayIndex,
-        new_start: start,
-        new_end: end,
-      }).catch((err) => console.error("Failed to reschedule event:", err))
+      sendCalendarAction({action_type: "reschedule_existing", event_id: event.id,
+        new_schedule: slotSchedule(visibleDays, dayIndex, start, end), source: "calendar_event_modal"})
+        .catch((err) => { setEvents(calendarEvents.map(mapEvent)); console.error("Failed to reschedule event:", err) })
     }
   }
 
@@ -209,7 +208,7 @@ export default function CalendarPanel() {
   function handleRetitleEvent(event, title) {
     setEvents((evs) => evs.map((ev) => (ev.id === event.id ? { ...ev, title } : ev)))
     if (sendCalendarAction) {
-      sendCalendarAction("modify", event.id, { title }).catch((err) =>
+      sendCalendarAction({action_type: "modify_existing", event_id: event.id, changes: {title}, source: "calendar_event_modal"}).catch((err) =>
         console.error("Failed to update event title:", err)
       )
     }
@@ -225,6 +224,7 @@ export default function CalendarPanel() {
   return (
     <>
       <section className="home-calendar-card">
+        {calendarActionError && <div className="calendar-action-error" role="status">{calendarActionError.message || String(calendarActionError)}</div>}
         <header className="calendar-topbar">
           <div className="calendar-top-left">
             <div className="calendar-week-nav">
@@ -299,7 +299,7 @@ export default function CalendarPanel() {
                       return (
                         <article
                           key={event.id}
-                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}${isDragSource ? " calendar-event-drag-source" : ""}`}
+                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}${event.invalid ? " calendar-event-invalid" : ""}${isDragSource ? " calendar-event-drag-source" : ""}`}
                           style={{
                             top: `${(startMinutes / 60) * ROW_HEIGHT}px`,
                             height: `${(duration / 60) * ROW_HEIGHT}px`,
@@ -315,7 +315,7 @@ export default function CalendarPanel() {
 
                   {dragging && dragPreview && dragPreview.dayIndex === dayIndex && (
                     <div
-                      className={`calendar-event-card calendar-event-${dragging.event.tone} calendar-drag-preview`}
+                      className={`calendar-event-card calendar-event-${dragging.event.tone} calendar-drag-preview${dragPreview.conflicts.length ? " calendar-event-invalid" : ""}`}
                       style={{
                         top: `${(dragPreview.startMinute / 60) * ROW_HEIGHT}px`,
                         height: `${((dragPreview.endMinute - dragPreview.startMinute) / 60) * ROW_HEIGHT}px`,
@@ -328,6 +328,7 @@ export default function CalendarPanel() {
                           minutesToTime(dragPreview.endMinute)
                         )}
                       </span>
+                      {dragPreview.conflicts.length > 0 && <small>Overlaps {dragPreview.conflicts.map(item => item.title).join(", ")}</small>}
                     </div>
                   )}
                 </div>
@@ -475,6 +476,19 @@ function minutesToTime(minutes) {
   const hh = Math.floor(minutes / 60)
   const mm = minutes % 60
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
+}
+
+function findLocalConflicts(events, eventId, dayIndex, start, end) {
+  const first = toMinutes(start), last = toMinutes(end)
+  if (last <= first) return [{id: "invalid", title: "invalid time range"}]
+  return events.filter(event => event.id !== eventId && !event.temporary && event.blocksTime !== false &&
+    event.dayIndex === dayIndex && first < toMinutes(event.end) && last > toMinutes(event.start))
+}
+
+function slotSchedule(visibleDays, dayIndex, start, end) {
+  const date = visibleDays[dayIndex].date
+  const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+  return {start: `${day}T${start}:00`, end: `${day}T${end}:00`}
 }
 
 function startOfWeekMonday(date) {

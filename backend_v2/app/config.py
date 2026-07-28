@@ -23,8 +23,10 @@ CONFIG = ModelConfig()
 class LLMConfig:
     parser: str = os.getenv("RATIONALE_PARSER", "gemini")
     api_key: str | None = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+    model: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
     timeout_seconds: float = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "30"))
+    retry_attempts: int = max(1, int(os.getenv("GEMINI_RETRY_ATTEMPTS", "4")))
+    retry_base_seconds: float = max(0.0, float(os.getenv("GEMINI_RETRY_BASE_SECONDS", "1")))
     scenario_generator: str = os.getenv("SCENARIO_GENERATOR", "deterministic")
 
 

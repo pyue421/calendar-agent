@@ -3,7 +3,6 @@ import SessionProvider, { useSession } from "../services/SessionContext"
 import ChatbotPanel from "../components/home/ChatbotPanel"
 import CalendarPanel from "../components/home/calendar"
 import ValuesPanel from "../components/home/values"
-import GoalsPanel from "../components/home/GoalsPanel"
 import "../components/home/home-layout.css"
 
 function HomeContent() {
@@ -18,7 +17,6 @@ function HomeContent() {
         <CalendarPanel />
         <div className="home-right-column">
           <ValuesPanel valueWeights={weights} />
-          <GoalsPanel />
         </div>
       </div>
     </div>

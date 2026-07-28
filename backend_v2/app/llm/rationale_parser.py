@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -40,6 +41,10 @@ class RationaleParserConfigurationError(RationaleParserError):
     pass
 
 
+class RationaleParserUnavailableError(RationaleParserError):
+    pass
+
+
 @dataclass(frozen=True)
 class ParseResult:
     observation: RationaleObservation
@@ -66,28 +71,35 @@ class GeminiRationaleParser:
             f"Candidate schedule: {decision_context.get('candidate_schedule') or 'not applicable'}\n"
             f"Participant rationale (the only conversational evidence):\n{text}"
         )
-        try:
-            response = client.models.generate_content(
-                model=self.config.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    response_mime_type="application/json",
-                    # Pydantic's extra="forbid" emits `additionalProperties: false`.
-                    # Some Gemini generateContent schema versions reject that keyword,
-                    # so send a compatible schema and retain strict validation below.
-                    response_schema=gemini_compatible_schema(RationaleObservation.model_json_schema()),
-                    temperature=0,
-                ),
-            )
-            if not response.text:
-                raise RationaleParserError("Gemini returned an empty rationale observation.")
-            observation = RationaleObservation.model_validate_json(response.text)
-            return ParseResult(observation=observation, provider="gemini", model=self.config.model)
-        except RationaleParserError:
-            raise
-        except Exception as exc:
-            raise RationaleParserError(f"Gemini rationale parsing failed: {exc}") from exc
+        for attempt in range(self.config.retry_attempts):
+            try:
+                response = client.models.generate_content(
+                    model=self.config.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        response_mime_type="application/json",
+                        # Pydantic's extra="forbid" emits `additionalProperties: false`.
+                        # Some Gemini generateContent schema versions reject that keyword,
+                        # so send a compatible schema and retain strict validation below.
+                        response_schema=gemini_compatible_schema(RationaleObservation.model_json_schema()),
+                    ),
+                )
+                if not response.text:
+                    raise RationaleParserError("Gemini returned an empty rationale observation.")
+                observation = RationaleObservation.model_validate_json(response.text)
+                return ParseResult(observation=observation, provider="gemini", model=self.config.model)
+            except RationaleParserError:
+                raise
+            except Exception as exc:
+                if not _is_transient_gemini_error(exc):
+                    raise RationaleParserError(f"Gemini rationale parsing failed: {exc}") from exc
+                if attempt + 1 == self.config.retry_attempts:
+                    raise RationaleParserUnavailableError(
+                        f"Gemini remains temporarily unavailable after {self.config.retry_attempts} attempts. "
+                        "Your rationale was not committed; please submit it again shortly."
+                    ) from exc
+                time.sleep(self.config.retry_base_seconds * (2 ** attempt))
 
 
 KEYWORDS = {
@@ -137,3 +149,11 @@ def gemini_compatible_schema(schema: dict) -> dict:
     if isinstance(schema, list):
         return [gemini_compatible_schema(value) for value in schema]
     return schema
+
+
+def _is_transient_gemini_error(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    text = str(exc).upper()
+    return status in {429, 500, 502, 503, 504} or any(
+        marker in text for marker in ("RESOURCE_EXHAUSTED", "UNAVAILABLE", "DEADLINE_EXCEEDED")
+    )

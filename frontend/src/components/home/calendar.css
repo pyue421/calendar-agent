@@ -319,6 +319,21 @@
   transition: top 0.05s linear, height 0.05s linear;
 }
 
+.calendar-action-error {
+  margin: 8px 12px 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: #fff0f0;
+  color: #8f1d1d;
+  font-size: 12px;
+}
+
+.calendar-event-invalid {
+  background: #fee2e2 !important;
+  border-color: #dc2626 !important;
+  color: #991b1b !important;
+}
+
 @media (max-width: 760px) {
   .home-calendar-card {
     min-height: 450px;

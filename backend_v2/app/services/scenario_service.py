@@ -12,6 +12,7 @@ from google.genai import types
 from ..config import LLM_CONFIG, LLMConfig
 from ..llm.rationale_parser import gemini_compatible_schema
 from .bayesian_value_model import VALUE_IDS
+from .calendar_conflict_service import find_conflicts
 
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -77,7 +78,7 @@ class ScenarioGenerator:
             client = genai.Client(api_key=self.config.api_key, http_options=types.HttpOptions(timeout=int(self.config.timeout_seconds * 1000)))
             response = client.models.generate_content(model=self.config.model, contents=prompt,
                 config=types.GenerateContentConfig(response_mime_type="application/json",
-                    response_schema=gemini_compatible_schema(SurfaceDetails.model_json_schema()), temperature=0.4))
+                    response_schema=gemini_compatible_schema(SurfaceDetails.model_json_schema())))
             return SurfaceDetails.model_validate_json(response.text)
         except Exception:
             return fallback
@@ -87,12 +88,12 @@ class ScenarioGenerator:
         base = datetime.fromisoformat(week_start)
         start = base + timedelta(days=specification["day_index"], hours=specification["hour"])
         end = start + timedelta(minutes=specification["duration_minutes"])
-        conflicts = [e["id"] for e in calendar if datetime.fromisoformat(e["start"]) < end and datetime.fromisoformat(e["end"]) > start]
+        conflicts = [e["id"] for e in find_conflicts(calendar, start.isoformat(), end.isoformat())]
         if not conflicts:
             conflict = {
                 "id": f"conflict_{specification['scenario_id']}",
                 "title": specification["required_calendar_conflict"].replace("_", " ").title(),
-                "start": start.isoformat(), "end": end.isoformat(), "category": "protected", "protected": True,
+                "start": start.isoformat(), "end": end.isoformat(), "category": "protected", "protected": True, "blocks_time": True,
             }
             calendar.append(conflict)
             conflicts = [conflict["id"]]

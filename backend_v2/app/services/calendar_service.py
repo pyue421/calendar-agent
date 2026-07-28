@@ -24,6 +24,7 @@ class DefaultCalendarProvider:
             event["id"] = f"{session_id}_{template['id']}"
             event["start"] = datetime.combine(day, datetime.strptime(template["start_time"], "%H:%M").time()).isoformat()
             event["end"] = datetime.combine(day, datetime.strptime(template["end_time"], "%H:%M").time()).isoformat()
+            event["blocks_time"] = template.get("blocks_time", True)
             events.append(event)
         return events
 
