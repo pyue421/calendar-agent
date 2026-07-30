@@ -28,12 +28,18 @@ export default function SessionProvider({ children }) {
   // (set while a New Values bubble's popup is open); null = no highlight.
   const [focusedValueIndex, setFocusedValueIndex] = useState(null)
 
-  // Create session on mount
+  // Restore or create the session on mount. This is the single place that
+  // decides whether to resume — ChatbotPanel used to also call
+  // createSession() unconditionally on its own mount, which (since child
+  // effects fire before parent effects) always won the race and silently
+  // abandoned any in-progress session on every reload.
   useEffect(() => {
     const stored = localStorage.getItem("discover_session_id")
     if (stored) {
       setSessionId(stored)
       refreshState(stored)
+    } else {
+      createSession("participant_" + Date.now())
     }
   }, [])
 
@@ -121,9 +127,18 @@ export default function SessionProvider({ children }) {
         method: "POST",
       })
       const data = await res.json()
-      if (data.value_weights) {
-        setValueWeights(data.value_weights)
-        // Real weights just landed — drop the optimistic preview override.
+      // If the participant already confirmed a decision this round, "New
+      // Values" has been showing the client-side preview estimate for it.
+      // Adopt that exact number as the round's official outcome instead of
+      // the backend's independently-computed value_weights — otherwise
+      // "Last Round" settles on a different number than what was just
+      // confirmed, and "New Values" appears to jump again right after
+      // Complete Round. Only fall back to the backend's own value_weights
+      // when there was nothing to confirm this round (e.g. no scenario).
+      const finalWeights =
+        previewConfirmed && previewValueWeights ? previewValueWeights : data.value_weights
+      if (finalWeights) {
+        setValueWeights(finalWeights)
         setPreviewValueWeights(null)
         setPreviewConfirmed(false)
       }

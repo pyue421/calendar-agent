@@ -4,28 +4,28 @@
 // baseline instead of drifting out of sync with their own copies.
 export const DEFAULT_VALUE_WEIGHTS = [
   {
-    label: "Value 1",
+    label: "Wellbeing",
     weight: 20,
     tone: "green",
     evidence: [{ id: "d1", text: "Waiting on your first conversation", round: 0 }],
     calendarEvents: [{ id: "d1c", text: "Waiting on your first calendar action", round: 0 }],
   },
   {
-    label: "Value 2",
+    label: "Achievement & Growth",
     weight: 20,
     tone: "rose",
     evidence: [{ id: "y1", text: "Keep chatting to surface this value", round: 0 }],
     calendarEvents: [{ id: "y1c", text: "Accept or decline events to surface this value", round: 0 }],
   },
   {
-    label: "Value 3",
+    label: "Relationships & Care",
     weight: 20,
     tone: "amber",
     evidence: [{ id: "v1", text: "Keep chatting to surface this value", round: 0 }],
     calendarEvents: [{ id: "v1c", text: "Accept or decline events to surface this value", round: 0 }],
   },
   {
-    label: "Value 4",
+    label: "Autonomy & Privacy",
     weight: 20,
     tone: "cyan",
     evidence: [{ id: "t1", text: "Keep chatting to surface this value", round: 0 }],

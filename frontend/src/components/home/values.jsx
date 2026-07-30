@@ -44,7 +44,7 @@ export default function ValuesPanel({ valueWeights, previewWeights, previewConfi
     <section className="home-values-card">
       <div className="values-section">
         <header className="section-header values-header">
-          <h2>Original Values</h2>
+          <h2>Last Round</h2>
         </header>
         <div className="value-bubble-wrap">
           {valueWeights.map((value, idx) => (

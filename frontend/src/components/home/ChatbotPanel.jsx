@@ -6,11 +6,9 @@ import "./chatbot.css"
 
 export default function ChatbotPanel() {
   const {
-    sessionId,
     currentRound,
     phase,
     loading,
-    createSession,
     startRound,
     sendChat,
     sendCalendarAction,
@@ -18,10 +16,24 @@ export default function ChatbotPanel() {
     submitReflection,
   } = useSession()
 
-  const [messages, setMessages] = useState([])
+  // Session creation/restoration is owned entirely by SessionContext's own
+  // mount effect — starting a second one here used to race it (child
+  // effects fire before parent effects) and always won, silently abandoning
+  // any in-progress session on every reload. See SessionContext.jsx.
+  const [messages, setMessages] = useState([
+    {
+      id: "m_welcome",
+      role: "assistant",
+      text: "Welcome! I'm your calendar scheduling assistant. I'll help you manage your week. Press **Start Round** when you're ready to begin.",
+    },
+  ])
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const [roundActive, setRoundActive] = useState(false)
+  // Whether the current round's scenario card has a confirmed decision yet.
+  // Gates the "Complete Round" button — the participant must lock in
+  // accept/decline/postpone before they can move on.
+  const [roundDecided, setRoundDecided] = useState(false)
   const scrollRef = useRef(null)
 
   useEffect(() => {
@@ -29,31 +41,6 @@ export default function ChatbotPanel() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
-
-  // Initialize session on mount
-  useEffect(() => {
-    if (!sessionId) {
-      initSession()
-    }
-  }, [])
-
-  async function initSession() {
-    try {
-      await createSession("participant_" + Date.now())
-      setMessages([
-        {
-          id: "m_welcome",
-          role: "assistant",
-          text: "Welcome! I'm your calendar scheduling assistant. I'll help you manage your week. Press **Start Round** when you're ready to begin.",
-        },
-      ])
-    } catch (e) {
-      console.error("Failed to create session:", e)
-      setMessages([
-        { id: "m_error", role: "assistant", text: "Failed to connect to the server. Make sure the backend is running on port 8000." },
-      ])
-    }
-  }
 
   async function handleStartRound() {
     setSending(true)
@@ -69,6 +56,10 @@ export default function ChatbotPanel() {
       }
       setRoundActive(true)
       // Add the scenario message, with a meeting card for the proposed event
+      const card = buildScenarioCard(data.emails, data.round)
+      // No proposed event this round means nothing to confirm — don't leave
+      // "Complete Round" permanently disabled.
+      setRoundDecided(!card)
       setMessages((msgs) => [
         ...msgs,
         {
@@ -76,7 +67,7 @@ export default function ChatbotPanel() {
           role: "assistant",
           text: data.message,
           meta: `Round ${data.round}/15 — ${data.phase}`,
-          card: buildScenarioCard(data.emails, data.round),
+          card,
         },
       ])
     } catch (e) {
@@ -158,6 +149,7 @@ export default function ChatbotPanel() {
         m.id === msgId ? { ...m, card: { ...m.card, decision } } : m
       )
     )
+    setRoundDecided(true)
     try {
       await sendCalendarAction(decision, card.eventId, details)
     } catch (e) {
@@ -253,11 +245,13 @@ export default function ChatbotPanel() {
             <button
               type="button"
               onClick={handleCompleteRound}
-              disabled={sending || loading}
+              disabled={sending || loading || !roundDecided}
+              title={roundDecided ? undefined : "Confirm a decision on this round's scenario first"}
               style={{
                 padding: "6px 16px", fontSize: 13, borderRadius: 6,
                 border: "1px solid #dee5eb", background: "#fff4e6",
-                cursor: sending ? "not-allowed" : "pointer", fontWeight: 500,
+                cursor: sending || !roundDecided ? "not-allowed" : "pointer", fontWeight: 500,
+                opacity: roundDecided ? 1 : 0.5,
               }}
             >
               Complete Round
@@ -567,6 +561,7 @@ function ScenarioCard({ card, onAccept, onReject, onPostpone, onConfirmBreakdown
             type="button"
             className={`meeting-action-btn${actionClass("decline")}`}
             onClick={() => preview("decline")}
+            disabled={!!card.decision}
           >
             {actionLabel("decline", "Decline", "Declining (preview)", "Declined ✓")}
           </button>
@@ -574,6 +569,7 @@ function ScenarioCard({ card, onAccept, onReject, onPostpone, onConfirmBreakdown
             type="button"
             className={`meeting-action-btn${actionClass("postpone")}`}
             onClick={() => preview("postpone")}
+            disabled={!!card.decision}
           >
             {actionLabel("postpone", "Postpone", "Postponing (preview)", "Postponed ✓")}
           </button>
@@ -581,6 +577,7 @@ function ScenarioCard({ card, onAccept, onReject, onPostpone, onConfirmBreakdown
             type="button"
             className={`meeting-action-btn${actionClass("accept")}`}
             onClick={() => preview("accept")}
+            disabled={!!card.decision}
           >
             {actionLabel("accept", "Accept", "Accepting (preview)", "Accepted ✓")}
           </button>

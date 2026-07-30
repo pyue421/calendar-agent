@@ -142,6 +142,12 @@ class SessionManager:
             # metadata), so a shallow copy would leak edits across sessions.
             calendar_events=[e.model_copy(deep=True) for e in DEFAULT_EVENTS],
         )
+        if config.resolve_provider() == "mock":
+            # Mock mode has no real LLM to originate hypotheses, so seed the
+            # five static values up front — every round then only adjusts
+            # confidence (see mock_llm.seed_hypotheses / _mock_hypothesis_updates).
+            from mock_llm import seed_hypotheses
+            session.value_ledger.hypotheses = seed_hypotheses()
         _sessions[session.id] = session
         logger.info(f"Created session {session.id} for participant {participant_id}")
         self._save_session(session)

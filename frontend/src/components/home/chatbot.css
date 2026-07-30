@@ -298,6 +298,19 @@
   background: #f8f9fa;
 }
 
+.meeting-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Keep the confirmed choice's color vivid even though it's now locked —
+   only the two unchosen options should read as dimmed/disabled. */
+.meeting-action-btn.confirmed-decline:disabled,
+.meeting-action-btn.confirmed-postpone:disabled,
+.meeting-action-btn.confirmed-accept:disabled {
+  opacity: 1;
+}
+
 .meeting-action-btn.previewing {
   background: #eef0f3;
   border: 1px dashed #ccd2d9;
