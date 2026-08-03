@@ -56,7 +56,8 @@ function ScenarioCard({card, onDecision, disabled}) {
   const [date, setDate] = useState(requested.date)
   const [startTime, setStartTime] = useState(requested.startTime)
   const [endTime, setEndTime] = useState(requested.endTime)
-  const [popover, setPopover] = useState(null)
+  const [conflictPopover, setConflictPopover] = useState(null)
+  const [activePreviewAction, setActivePreviewAction] = useState(null)
   const closeTimer = useRef(null)
   const edited = editedSchedule(date, startTime, endTime)
   const candidateConflicts = edited.valid ? scheduleConflicts(session.calendarEvents, edited.schedule) : []
@@ -67,21 +68,30 @@ function ScenarioCard({card, onDecision, disabled}) {
   useEffect(() => { const event = disabled ? null : candidateEvent(card, requested.schedule, edited); session.setCandidateEvent(event ? {...event, invalid: candidateConflicts.length > 0} : null) }, [card, date, disabled, endTime, startTime, candidateConflicts.length]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { clearTimeout(closeTimer.current); session.setCandidateEvent(null); session.clearPreview() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (popover?.action !== "reschedule" || !rescheduleEnabled) return
+    const key = event => {
+      if (event.key !== "Escape") return
+      clearTimeout(closeTimer.current); setConflictPopover(null); setActivePreviewAction(null); session.clearPreview()
+    }
+    window.addEventListener("keydown", key)
+    return () => window.removeEventListener("keydown", key)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (activePreviewAction !== "reschedule" || !rescheduleEnabled) return
     const timer = setTimeout(() => session.loadPreview("reschedule", edited.schedule, "hover").catch(() => {}), 350)
     return () => clearTimeout(timer)
-  }, [date, endTime, startTime, popover?.action, rescheduleEnabled]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [date, endTime, startTime, activePreviewAction, rescheduleEnabled]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function cancelClose() { clearTimeout(closeTimer.current) }
-  function closePreview() { cancelClose(); setPopover(null); session.clearPreview() }
+  function closePreview() { cancelClose(); setConflictPopover(null); setActivePreviewAction(null); session.clearPreview() }
   function scheduleClose() { cancelClose(); closeTimer.current = setTimeout(closePreview, 140) }
   function show(action, target) {
     cancelClose()
+    if (disabled) return
     const conflicts = action === "accept" ? acceptConflicts : action === "reschedule" ? candidateConflicts : []
-    if (conflicts.length) { setPopover({action, anchor: target.getBoundingClientRect(), conflicts}); session.clearPreview(); return }
+    if (conflicts.length) { setConflictPopover({anchor: target.getBoundingClientRect(), conflicts}); setActivePreviewAction(null); session.clearPreview(); return }
     const candidate = actionCandidate(action, requested.schedule, edited)
     if (action === "reschedule" && !candidate) return
-    setPopover({action, anchor: target.getBoundingClientRect()})
+    setConflictPopover(null); setActivePreviewAction(action)
     session.loadPreview(action, candidate, "hover").catch(() => {})
   }
   function actionProps(action) { return {onMouseEnter: event => show(action, event.currentTarget), onMouseLeave: scheduleClose, onFocus: event => show(action, event.currentTarget), onBlur: scheduleClose} }
@@ -94,18 +104,10 @@ function ScenarioCard({card, onDecision, disabled}) {
     {candidateConflicts.length > 0 && <p className="meeting-schedule-error" role="alert">This time overlaps with {candidateConflicts.map(item => item.title).join(", ")}.</p>}
     <div className="meeting-decision-row"><span className="meeting-action-target" {...actionProps("decline")}><button className="meeting-reject-btn" disabled={disabled} onClick={() => decide("decline")}>Decline</button></span><span className="meeting-action-target" {...actionProps("reschedule")}><button className="meeting-reschedule-btn" disabled={!rescheduleEnabled} onClick={() => decide("reschedule")}>Reschedule</button></span><span className="meeting-action-target" {...actionProps("accept")}><button className="meeting-accept-btn" disabled={!acceptEnabled} onClick={() => decide("accept")}>Accept</button></span></div>
     {card.committedAction && <p className="decision-recorded">Decision recorded: {card.committedAction}</p>}
-  </div>{popover && createPortal(popover.conflicts ? <ConflictPopover conflicts={popover.conflicts} anchor={popover.anchor} onMouseEnter={cancelClose} onMouseLeave={scheduleClose}/> : <ValuePreviewPopover preview={session.preview?.action === popover.action ? session.preview : null} loading={session.previewLoading} anchor={popover.anchor} onClose={closePreview} onMouseEnter={cancelClose} onMouseLeave={scheduleClose}/>, document.body)}</div>
+  </div>{conflictPopover && createPortal(<ConflictPopover conflicts={conflictPopover.conflicts} anchor={conflictPopover.anchor} onMouseEnter={cancelClose} onMouseLeave={scheduleClose}/>, document.body)}</div>
 }
 
 function ConflictPopover({conflicts, anchor, onMouseEnter, onMouseLeave}) {
   const left = Math.max(8, Math.min(window.innerWidth - 330, anchor.right + 12))
   return <aside className="availability-popover" style={{left, top: Math.max(8, anchor.top)}} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}><strong>Time unavailable</strong><p>This time overlaps with {conflicts.map(item => `${item.title} (${new Date(item.start).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}–${new Date(item.end).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})})`).join(", ")}.</p><small>Move or remove the conflicting event, reschedule this request, or decline it.</small></aside>
-}
-
-function ValuePreviewPopover({preview, loading, anchor, onClose, onMouseEnter, onMouseLeave}) {
-  const ref = useRef(null)
-  useEffect(() => { const key = event => {if (event.key === "Escape") onClose()}; window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key) }, [onClose])
-  const left = Math.min(window.innerWidth - 650, anchor.right + 12)
-  const top = Math.max(8, Math.min(anchor.top, window.innerHeight - 390))
-  return <aside ref={ref} className="value-preview-popover" style={{left: Math.max(8, left), top}} role="dialog" aria-label="Hypothetical value profile" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}><header><div><small>Counterfactual only</small><h3>Hypothetical value profile</h3></div><button onClick={onClose} aria-label="Close preview">×</button></header>{loading || !preview ? <p className="preview-loading">Loading preview…</p> : preview.feasible === false ? <p className="meeting-schedule-error">This option is no longer available because the calendar changed.</p> : <div className="popover-bubbles">{preview.preview_profile.map(value => {const percentage = value.relative_weight ?? value.weight; const size = 80 + percentage * 2.1; return <div className="popover-bubble-slot" key={value.id}><div className={`value-bubble value-bubble-${value.tone || "neutral"}`} style={{width: size, height: size}}/><span>{value.label}</span><strong>{percentage.toFixed(1)}%</strong><small>±{value.uncertainty}%</small></div>})}</div>}<p>This action-only preview does not change your current profile and does not include the later rationale update.</p></aside>
 }

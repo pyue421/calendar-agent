@@ -20,7 +20,7 @@ test("temporary event is absent for unchanged schedule", () => assert.equal(cand
 test("date selector uses actual dates from the study week", () => { const dates = weekDates("2026-07-20", requested.date); assert.equal(dates.length, 7); assert.equal(dates[0].value, "2026-07-20"); assert.equal(dates[6].value, "2026-07-26") })
 test("compact UI has hover and focus preview handlers without preview buttons", () => { const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8"); assert.match(source, /onMouseEnter/); assert.match(source, /onFocus/); assert.doesNotMatch(source, />Preview values</); assert.doesNotMatch(source, /datetime-local/) })
 test("reschedule refresh is debounced", () => { const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8"); assert.match(source, /setTimeout\([^]*350\)/) })
-test("Escape closes the popover", () => { const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8"); assert.match(source, /event\.key === "Escape"/) })
+test("Escape clears the active preview", () => { const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8"); assert.match(source, /event\.key !== "Escape"/); assert.match(source, /session\.clearPreview\(\)/) })
 test("stale preview responses are guarded", () => { const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8"); assert.match(source, /requestNumber === previewRequest\.current/) })
 
 const blocking = [{id: "busy", title: "Team planning", start: "2026-07-21T11:30:00", end: "2026-07-21T12:30:00", blocks_time: true}]
@@ -72,10 +72,11 @@ test("temporary candidates preserve the incoming semantic tone", () => {
   const mappedCard = {...card, value_mapping: {tone: "rose"}, primary_value_id: "achievement_growth", value_tone: "rose"}
   assert.equal(candidateEvent(mappedCard, requested.schedule, changed).value_mapping.tone, "rose")
 })
-test("counterfactual previews remain anchored popovers", () => {
+test("counterfactual previews use the persistent value panel", () => {
   const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
-  assert.match(source, /ValuePreviewPopover/)
-  assert.match(source, /createPortal/)
+  const values = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.doesNotMatch(source, /ValuePreviewPopover|Hypothetical value profile/)
+  assert.match(values, /previewValueWeights \|\| valueWeights/)
 })
 test("focused-value dimming was not imported", () => {
   const calendar = readFileSync(fileURLToPath(new URL("./calendar.jsx", import.meta.url)), "utf8")
@@ -83,12 +84,36 @@ test("focused-value dimming was not imported", () => {
   assert.doesNotMatch(calendar, /focusedValueIndex/)
   assert.doesNotMatch(css, /calendar-event-dimmed/)
 })
-test("current value bubbles display their committed percentages", () => {
+test("value bubbles do not display numerical weights", () => {
   const source = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
-  assert.match(source, /value\.relative_weight\.toFixed\(1\)/)
+  assert.doesNotMatch(source, /toFixed|credible_interval|posterior_delta|posterior_before|posterior_after/)
 })
-test("counterfactual and committed percentages use the same precision", () => {
+test("preview and committed bubbles share one size scale", () => {
+  const source = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.match(source, /displayedProfile\.map\(value => <ValueBubble key={value\.id}/)
+  assert.equal((source.match(/const size =/g) || []).length, 1)
+})
+test("layout order is chatbot, value profile, calendar", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../views/home.jsx", import.meta.url)), "utf8")
+  assert.match(source, /<ChatbotPanel \/>[^]*<ValuesPanel \/>[^]*<CalendarPanel \/>/)
+})
+test("one profile has no old sections or evidence toggles", () => {
+  const source = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.equal((source.match(/<ValuesPanel/g) || []).length, 0)
+  assert.doesNotMatch(source, /Last Round|New Values|Original Values|Calendar actions/)
+})
+test("outer bubbles open committed unified evidence without inner bubbles", () => {
+  const source = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.match(source, /setActiveValueId\(value\.id\)/)
+  assert.match(source, /valueWeights\.find/)
+  assert.doesNotMatch(source, /innerSlotPositions|value-bubble-evidence/)
+})
+test("loading a new preview clears old preview sizes", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  assert.match(source, /requestNumber = \+\+previewRequest\.current; setPreview\(null\); setPreviewLoading\(true\)/)
+})
+test("preview hover cannot call the decision endpoint", () => {
   const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
-  assert.match(source, /percentage\.toFixed\(1\)/)
-  assert.doesNotMatch(source, /Math\.round\(value\.weight\)/)
+  assert.match(source, /session\.loadPreview\(action, candidate, "hover"\)/)
+  assert.match(source, /function decide\(action\)[^]*onDecision\(action/s)
 })

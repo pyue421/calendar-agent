@@ -8,11 +8,7 @@ python -m uvicorn app.main:app --app-dir backend_v2 --reload --port 8000
 
 ## Five-dimensional vocabulary
 
-- `wellbeing` — health, rest, boundaries, and personal sustainability.
-- `achievement_growth` — progress, mastery, learning, and professional development.
-- `relationships_care` — family, friendship, social support, and community care.
-- `autonomy_privacy` — control over time, independence, focus, and privacy.
-- `responsibility_fairness` — reliability, cooperation, promises, integrity, and fairness.
+The versioned names, interface aliases, definitions, and theoretical notes are centralized in `app/services/value_taxonomy.py`. The participant-facing labels are concise interface aliases for domain-specific scheduling-priority constructs. They should not be interpreted as independently validated psychological scales. Research exports use the full construct metadata from that taxonomy while stored value IDs remain stable.
 
 Scenario features in `app/data/scenario_bank.json` are manually authored on a common `[-1, 1]` scale. Positive values mean an action protects or expresses a dimension in that scenario; negative values mean it compromises it. Zero means no direct feature claim. These features describe trade-offs and do not rank actions morally.
 

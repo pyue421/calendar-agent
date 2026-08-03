@@ -33,13 +33,14 @@ def active():
 
 def test_exactly_five_stable_value_definitions():
     assert len(VALUE_DEFINITIONS) == len(VALUE_IDS) == 5
-    assert {item["id"]: (item["label"], item["tone"]) for item in VALUE_DEFINITIONS} == {
-        "wellbeing": ("Wellbeing", "green"),
-        "achievement_growth": ("Achievement & Growth", "rose"),
-        "relationships_care": ("Relationships & Care", "amber"),
-        "autonomy_privacy": ("Autonomy & Privacy", "cyan"),
-        "responsibility_fairness": ("Responsibility & Fairness", "violet"),
+    assert {item["id"]: (item["display_label"], item["full_label"], item["tone"]) for item in VALUE_DEFINITIONS} == {
+        "wellbeing": ("Wellbeing", "Wellbeing", "green"),
+        "achievement_growth": ("Achievement", "Achievement and Development", "rose"),
+        "relationships_care": ("Relationships", "Relationships and Care", "amber"),
+        "autonomy_privacy": ("Autonomy", "Autonomy and Privacy", "cyan"),
+        "responsibility_fairness": ("Responsibility", "Responsibility and Fairness", "violet"),
     }
+    assert all(item["taxonomy_version"] and item["definition"] and item["theoretical_notes"] for item in VALUE_DEFINITIONS)
 
 
 def test_every_default_template_is_explicitly_mapped():
@@ -121,5 +122,7 @@ def test_export_contains_taxonomy_and_event_mappings():
     sid, _, _ = active()
     exported = client.get(f"/api/sessions/{sid}/export").json()
     assert len(exported["value_taxonomy"]) == 5
+    assert exported["value_taxonomy"][1]["full_label"] == "Achievement and Development"
+    assert exported["value_taxonomy"][1]["display_label"] == "Achievement"
     assert exported["value_palette"]["wellbeing"]["tone"] == "green"
     assert all("value_mapping" in event for event in exported["calendar"])

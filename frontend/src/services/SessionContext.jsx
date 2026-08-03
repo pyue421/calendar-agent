@@ -58,7 +58,7 @@ export default function SessionProvider({children}) {
     if (data.event) setEvent(data.event); return data
   }
   async function loadPreview(action, candidateSchedule, displayState = "hover") {
-    const requestNumber = ++previewRequest.current; setPreviewLoading(true)
+    const requestNumber = ++previewRequest.current; setPreview(null); setPreviewLoading(true)
     try {
       const data = await request(`/api/sessions/${sessionId}/previews`, {method: "POST", body: JSON.stringify({event_id: event.scenario_id, action, candidate_schedule: candidateSchedule, display_state: displayState})})
       if (requestNumber === previewRequest.current) setPreview(data)
@@ -84,8 +84,9 @@ export default function SessionProvider({children}) {
     } catch (error) { setCalendarActionError(error.detail || error.message); throw error }
     finally { setCalendarActionLoading(false) }
   }
+  const previewValueWeights = preview?.feasible !== false && preview?.preview_profile ? displayValues(preview.preview_profile) : null
   return <SessionContext.Provider value={{sessionId, ...state, event, currentProfile, valueWeights: displayValues(currentProfile),
-    preview, previewLoading, candidateEvent, setCandidateEvent, calendarEvents, loading, startRound, loadPreview, commitDecision, sendChat,
+    preview, previewValueWeights, previewLoading, candidateEvent, setCandidateEvent, calendarEvents, loading, startRound, loadPreview, commitDecision, sendChat,
     calendarActionLoading, calendarActionError, sendCalendarAction,
     clearPreview: () => {previewRequest.current += 1; setPreview(null); setPreviewLoading(false)}}}>{children}</SessionContext.Provider>
 }
