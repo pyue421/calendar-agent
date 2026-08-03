@@ -45,7 +45,12 @@ export function weekDates(weekStart, fallbackDate) {
 
 export function candidateEvent(card, requested, edited) {
   const schedule = actionCandidate("reschedule", requested, edited)
-  return schedule ? {id: `${card.scenario_id}-candidate`, title: `${card.title} (candidate)`, ...schedule, temporary: true} : null
+  if (!schedule) return null
+  const event = {id: `${card.scenario_id}-candidate`, title: `${card.title} (candidate)`, ...schedule, temporary: true}
+  if (card.value_mapping) {
+    Object.assign(event, {value_mapping: card.value_mapping, primary_value_id: card.primary_value_id, value_tone: card.value_tone})
+  }
+  return event
 }
 
 export function scheduleConflicts(calendar, schedule, excludeEventId = null) {

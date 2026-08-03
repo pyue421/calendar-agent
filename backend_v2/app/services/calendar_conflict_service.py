@@ -32,7 +32,9 @@ def validate_interval(start: str, end: str) -> tuple[datetime, datetime]:
 
 
 def conflict_summary(event: dict) -> dict:
-    return {key: event.get(key) for key in ("id", "title", "start", "end", "category", "protected")}
+    return {key: event.get(key) for key in (
+        "id", "title", "start", "end", "category", "protected", "primary_value_id", "value_tone", "value_mapping"
+    )}
 
 
 def find_conflicts(calendar: list[dict], start: str, end: str, exclude_event_id: str | None = None) -> list[dict]:

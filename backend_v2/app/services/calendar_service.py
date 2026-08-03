@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+from .event_value_mapper import map_calendar_event
 
 class CalendarProvider(Protocol):
     def create_calendar(self, session_id: str, week_start: date) -> list[dict]: ...
@@ -25,7 +26,7 @@ class DefaultCalendarProvider:
             event["start"] = datetime.combine(day, datetime.strptime(template["start_time"], "%H:%M").time()).isoformat()
             event["end"] = datetime.combine(day, datetime.strptime(template["end_time"], "%H:%M").time()).isoformat()
             event["blocks_time"] = template.get("blocks_time", True)
-            events.append(event)
+            events.append(map_calendar_event(event))
         return events
 
 

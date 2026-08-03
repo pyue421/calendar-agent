@@ -10,7 +10,7 @@ from google.genai import types
 
 from ..config import LLMConfig
 from ..models import RationaleObservation
-from ..services.bayesian_value_model import VALUE_IDS
+from ..services.value_taxonomy import VALUE_IDS
 
 
 SYSTEM_PROMPT = """You convert a participant's explanation of one calendar decision into structured evidence.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .bayesian_value_model import VALUE_IDS
+from .value_taxonomy import VALUE_IDS
 
 CONFIG = json.loads((Path(__file__).resolve().parents[1] / "data" / "calendar_adjustment_features.json").read_text(encoding="utf-8"))
 

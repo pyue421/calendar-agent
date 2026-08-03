@@ -18,9 +18,11 @@ async function request(path, options = {}) {
 }
 
 function displayValues(profile = []) {
-  const tones = ["green", "rose", "amber", "cyan", "violet"]
-  return profile.map((value, index) => ({...value, weight: value.relative_weight, tone: tones[index],
-    evidence: value.conversation_evidence || [], calendarEvents: value.calendar_action_evidence || []}))
+  const fallbackTones = {wellbeing: "green", achievement_growth: "rose", relationships_care: "amber",
+    autonomy_privacy: "cyan", responsibility_fairness: "violet"}
+  return profile.map(value => ({...value, weight: value.relative_weight,
+    tone: value.tone || fallbackTones[value.id] || "neutral",
+    evidence: value.evidence || [...(value.conversation_evidence || []), ...(value.calendar_action_evidence || [])]}))
 }
 
 export default function SessionProvider({children}) {

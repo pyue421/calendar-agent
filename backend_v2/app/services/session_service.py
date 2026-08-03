@@ -6,12 +6,14 @@ from datetime import datetime, timedelta, timezone
 
 from ..config import CONFIG, LLM_CONFIG, ModelConfig
 from ..llm.rationale_parser import RationaleParser, build_rationale_parser
-from .bayesian_value_model import GridBayesianValueModel, VALUE_IDS
+from .bayesian_value_model import GridBayesianValueModel
+from .value_taxonomy import VALUE_IDS, exported_taxonomy, value_palette
 from .calendar_feature_service import action_features
 from .calendar_conflict_service import CalendarConflictError, find_conflicts, validate_interval
 from .calendar_adjustment_service import compound_features, net_adjustments, CONFIG as ADJUSTMENT_CONFIG
 from .calendar_service import CalendarProvider, DEFAULT_CALENDAR_PROVIDER, current_week_start
 from .scenario_service import BANK, GENERATOR
+from .event_value_mapper import map_calendar_event
 
 
 def now() -> str:
@@ -53,6 +55,12 @@ class SessionService:
         profile = copy.deepcopy(s["model"].summary())
         for value in profile:
             linked = [e for e in s["value_evidence"] if e["value_id"] == value["id"]]
+            linked.sort(key=lambda evidence: (
+                evidence.get("created_at", ""),
+                evidence.get("round", 0),
+                abs(evidence.get("posterior_delta", 0)),
+            ), reverse=True)
+            value["evidence"] = copy.deepcopy(linked)
             value["conversation_evidence"] = [e for e in linked if e["source_type"] == "conversation"]
             value["calendar_action_evidence"] = [e for e in linked if e["source_type"] == "calendar_action"]
         return profile
@@ -67,6 +75,7 @@ class SessionService:
                 "awaiting_decision": s["awaiting_decision"], "awaiting_rationale": s["awaiting_rationale"],
                 "calendar_revision": s["calendar_revision"], "active_request_conflicts": conflicts,
                 "accept_available": not conflicts,
+                "value_palette": value_palette(),
                 "pending_decision_id": next((d["decision_id"] for d in reversed(s["decisions"]) if not d["rationale_submitted"]), None)}
 
     def next_event(self, sid: str) -> dict:
@@ -189,8 +198,14 @@ class SessionService:
                       "source_type": "calendar_action", "source_phase": "round", "round": decision["round"],
                       "scenario_id": decision["scenario_id"], "decision_id": decision["decision_id"], "exact_text": exact,
                       "action": decision["action"], "event_title": event["title"], "requested_schedule": {"start": event["requested_start"], "end": event["requested_end"]},
-                      "candidate_schedule": decision["candidate_schedule"], "affected_commitments": [{"id": e["id"], "title": e["title"], "protected": e.get("protected", False), "category": e.get("category")} for e in conflicts],
+                      "candidate_schedule": decision["candidate_schedule"],
+                      "affected_commitments": [{
+                          "id": e["id"], "title": e["title"], "protected": e.get("protected", False),
+                          "category": e.get("category"), "primary_value_id": e.get("primary_value_id"),
+                          "value_mapping": e.get("value_mapping"),
+                      } for e in conflicts],
                       "round_calendar_adjustments": decision["round_calendar_adjustments"], "compound_plan": decision["compound_plan"],
+                      "event_value_mapping": event["value_mapping"],
                       "directness": None, "direction": "increase" if delta > 0 else "decrease" if delta < 0 else "negligible",
                       "posterior_before": before_map[value_id]["posterior_mean"], "posterior_after": after_map[value_id]["posterior_mean"],
                       "posterior_delta": round(delta, 6), "created_at": now()}
@@ -209,7 +224,11 @@ class SessionService:
         features = compound_features(action_features(scenario, candidate), action, adjustments)
         before = s["model"].summary(); s["model"].observe_action(action, features); after = s["model"].summary()
         if action in ("accept", "reschedule"):
-            s["calendar"].append({"id": event_id, "title": event["title"], **schedule, "category": "work", "protected": False, "flexibility": "medium", "blocks_time": True})
+            s["calendar"].append(map_calendar_event({
+                "id": event_id, "title": event["title"], **schedule, "category": "incoming_request",
+                "protected": False, "flexibility": "medium", "blocks_time": True,
+                "event_value_id": event["event_value_id"],
+            }))
         s["version"] += 1
         decision = {"decision_id": f"decision_{uuid.uuid4().hex[:12]}", "event_id": event_id,
                     "scenario_id": s["active_scenario_id"], "round": s["current_round"], "action": action,
@@ -280,7 +299,8 @@ class SessionService:
             "rationale_parser_config": {"provider": LLM_CONFIG.parser, "model": LLM_CONFIG.model},
             "scenario_generator_config": {"provider": LLM_CONFIG.scenario_generator, "model": LLM_CONFIG.model if LLM_CONFIG.scenario_generator == "gemini" else None},
             "action_feature_mappings": {x["scenario_id"]: x["action_features"] for x in BANK.scenarios},
-            "calendar_adjustment_feature_config": ADJUSTMENT_CONFIG}
+            "calendar_adjustment_feature_config": ADJUSTMENT_CONFIG,
+            "value_taxonomy": exported_taxonomy(), "value_palette": value_palette()}
 
 
 sessions = SessionService()

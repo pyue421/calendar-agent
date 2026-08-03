@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from .bayesian_value_model import VALUE_IDS
+from .value_taxonomy import VALUE_IDS
 
 
 def _vector(**values: float) -> list[float]:

@@ -35,3 +35,60 @@ test("successful calendar actions apply authoritative state and revision", () =>
 test("calendar changes clear stale previews", () => { const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8"); assert.match(source, /setPreview\(null\).*applyState\(data\)/s) })
 test("temporary candidates never produce calendar actions", () => { const source = readFileSync(fileURLToPath(new URL("./calendar.jsx", import.meta.url)), "utf8"); assert.match(source, /if \(calEvent\.temporary\) return/); assert.match(source, /oldEvent\.temporary/) })
 test("non-blocking and boundary-adjacent events do not conflict", () => { assert.equal(scheduleConflicts([{...blocking[0], blocks_time: false}], changed.schedule).length, 0); assert.equal(scheduleConflicts([{...blocking[0], start: changed.schedule.end, end: "2026-07-21T13:00:00"}], changed.schedule).length, 0) })
+
+test("unified profile has no evidence-source toggle", () => {
+  const source = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.doesNotMatch(source, /viewMode|switchMode|values-view-toggle/)
+  assert.doesNotMatch(source, />Conversation<|>Calendar actions</)
+})
+test("exactly one committed profile bubble collection is rendered", () => {
+  const source = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.equal((source.match(/className="value-bubble-wrap"/g) || []).length, 1)
+})
+test("conversation and action evidence share one array", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  assert.match(source, /evidence: value\.evidence/)
+  assert.doesNotMatch(source, /calendarEvents: value\.calendar_action_evidence/)
+})
+test("unified evidence items display source badges", () => {
+  const source = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.match(source, /value-evidence-source/)
+  assert.match(source, /Conversation/)
+  assert.match(source, /Calendar action/)
+})
+test("calendar event classes use backend value tones", () => {
+  const source = readFileSync(fileURLToPath(new URL("./calendar.jsx", import.meta.url)), "utf8")
+  assert.match(source, /ev\.value_mapping\?\.tone \?\? ev\.value_tone \?\? "neutral"/)
+})
+test("frontend category order does not control event color", () => {
+  const source = readFileSync(fileURLToPath(new URL("./calendar.jsx", import.meta.url)), "utf8")
+  assert.doesNotMatch(source, /CATEGORY_ORDER|toneForEvent|valueIndexForEvent/)
+})
+test("invalid styling still overrides semantic tones", () => {
+  const source = readFileSync(fileURLToPath(new URL("./calendar.css", import.meta.url)), "utf8")
+  assert.match(source, /\.calendar-event-invalid[^]*!important/)
+})
+test("temporary candidates preserve the incoming semantic tone", () => {
+  const mappedCard = {...card, value_mapping: {tone: "rose"}, primary_value_id: "achievement_growth", value_tone: "rose"}
+  assert.equal(candidateEvent(mappedCard, requested.schedule, changed).value_mapping.tone, "rose")
+})
+test("counterfactual previews remain anchored popovers", () => {
+  const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
+  assert.match(source, /ValuePreviewPopover/)
+  assert.match(source, /createPortal/)
+})
+test("focused-value dimming was not imported", () => {
+  const calendar = readFileSync(fileURLToPath(new URL("./calendar.jsx", import.meta.url)), "utf8")
+  const css = readFileSync(fileURLToPath(new URL("./calendar.css", import.meta.url)), "utf8")
+  assert.doesNotMatch(calendar, /focusedValueIndex/)
+  assert.doesNotMatch(css, /calendar-event-dimmed/)
+})
+test("current value bubbles display their committed percentages", () => {
+  const source = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.match(source, /value\.relative_weight\.toFixed\(1\)/)
+})
+test("counterfactual and committed percentages use the same precision", () => {
+  const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
+  assert.match(source, /percentage\.toFixed\(1\)/)
+  assert.doesNotMatch(source, /Math\.round\(value\.weight\)/)
+})

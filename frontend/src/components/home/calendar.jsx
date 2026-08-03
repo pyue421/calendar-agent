@@ -18,7 +18,7 @@ function mapEvent(ev) {
     dayIndex: ev.day_index ?? ev.dayIndex ?? (isoStart ? Math.max(0, Math.min(4, (isoStart.getDay() + 6) % 7)) : 0),
     start: isoStart ? isoStart.toTimeString().slice(0, 5) : ev.start,
     end: isoEnd ? isoEnd.toTimeString().slice(0, 5) : ev.end,
-    tone: ev.temporary ? "amber" : (ev.tone || "blue"),
+    tone: ev.value_mapping?.tone ?? ev.value_tone ?? "neutral",
     category: ev.category || "work",
     isNew: ev.is_new ?? ev.isNew ?? false,
     metadata: ev.metadata || {},

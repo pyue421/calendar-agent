@@ -11,11 +11,23 @@ from google.genai import types
 
 from ..config import LLM_CONFIG, LLMConfig
 from ..llm.rationale_parser import gemini_compatible_schema
-from .bayesian_value_model import VALUE_IDS
+from .value_taxonomy import VALUE_IDS
 from .calendar_conflict_service import find_conflicts
+from .event_value_mapper import map_calendar_event
 
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+
+CONFLICT_VALUE_IDS = {
+    "protected_focus": "autonomy_privacy", "planned_work": "achievement_growth",
+    "personal_time": "wellbeing", "work_commitment": "responsibility_fairness",
+    "rest_block": "wellbeing", "learning_block": "achievement_growth",
+    "deadline_block": "achievement_growth", "focus_block": "autonomy_privacy",
+    "team_meeting": "responsibility_fairness", "personal_task": "autonomy_privacy",
+    "private_block": "autonomy_privacy", "personal_appointment": "autonomy_privacy",
+    "flexible_work": "autonomy_privacy", "self_directed_work": "autonomy_privacy",
+    "group_activity": "relationships_care",
+}
 
 
 class GeneratedScenario(BaseModel):
@@ -30,6 +42,10 @@ class GeneratedScenario(BaseModel):
     requested_end: str
     conflicting_event_ids: list[str]
     feasible_actions: list[str]
+    event_value_id: str
+    value_mapping: dict
+    primary_value_id: str
+    value_tone: str
 
 
 class SurfaceDetails(BaseModel):
@@ -41,10 +57,12 @@ class SurfaceDetails(BaseModel):
 
 class ScenarioBank:
     def __init__(self, path: Path = DATA_DIR / "scenario_bank.json"):
-        self.scenarios = json.loads(path.read_text(encoding="utf-8"))
+        self.scenarios = json.loads(path.read_text(encoding="utf-8-sig"))
         if len(self.scenarios) != 15 or len({s["scenario_id"] for s in self.scenarios}) != 15:
             raise ValueError("Scenario bank must contain exactly 15 unique scenarios")
         for scenario in self.scenarios:
+            if scenario.get("event_value_id") not in VALUE_IDS:
+                raise ValueError(f"{scenario['scenario_id']} requires a valid event_value_id")
             for action, vector in scenario["action_features"].items():
                 if set(vector) != set(VALUE_IDS):
                     raise ValueError(f"{scenario['scenario_id']} {action} must contain exactly the five value IDs")
@@ -90,19 +108,24 @@ class ScenarioGenerator:
         end = start + timedelta(minutes=specification["duration_minutes"])
         conflicts = [e["id"] for e in find_conflicts(calendar, start.isoformat(), end.isoformat())]
         if not conflicts:
-            conflict = {
+            conflict = map_calendar_event({
                 "id": f"conflict_{specification['scenario_id']}",
                 "title": specification["required_calendar_conflict"].replace("_", " ").title(),
                 "start": start.isoformat(), "end": end.isoformat(), "category": "protected", "protected": True, "blocks_time": True,
-            }
+                "primary_value_id": CONFLICT_VALUE_IDS[specification["required_calendar_conflict"]],
+                "primary_value_reason": "This controlled conflict template has an explicit study-calendar mapping.",
+            })
             calendar.append(conflict)
             conflicts = [conflict["id"]]
+        mapped = map_calendar_event({"event_value_id": specification["event_value_id"], "category": "incoming_request"})
         return GeneratedScenario(
             scenario_id=specification["scenario_id"], module_id=specification["module_id"],
             scenario_family=specification["scenario_family"], requester=surface.requester,
             title=surface.title, description=surface.request_text,
             requested_start=start.isoformat(), requested_end=end.isoformat(),
             conflicting_event_ids=conflicts, feasible_actions=specification["feasible_actions"],
+            event_value_id=specification["event_value_id"], value_mapping=mapped["value_mapping"],
+            primary_value_id=mapped["primary_value_id"], value_tone=mapped["value_tone"],
         )
 
 

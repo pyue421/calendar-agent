@@ -319,6 +319,42 @@
   transition: top 0.05s linear, height 0.05s linear;
 }
 
+.calendar-event-green {
+  background: rgba(182, 243, 212, 0.5);
+  border-left-color: #49E194;
+  color: #0E7A44;
+}
+
+.calendar-event-rose {
+  background: rgba(255, 225, 238, 0.7);
+  border-left-color: #FD81C9;
+  color: #B02472;
+}
+
+.calendar-event-amber {
+  background: rgba(251, 223, 130, 0.35);
+  border-left-color: #FFD351;
+  color: #8A6B00;
+}
+
+.calendar-event-cyan {
+  background: rgba(196, 240, 255, 0.6);
+  border-left-color: #48CBF4;
+  color: #00546E;
+}
+
+.calendar-event-violet {
+  background: rgba(203, 167, 246, 0.3);
+  border-left-color: #C281EB;
+  color: #6D03AF;
+}
+
+.calendar-event-neutral {
+  background: #eef1f4;
+  border-left-color: #9aa3ad;
+  color: #4f5963;
+}
+
 .calendar-action-error {
   margin: 8px 12px 0;
   padding: 7px 10px;

@@ -12,34 +12,6 @@
   margin-bottom: 0;
 }
 
-.values-view-toggle {
-  display: flex;
-  align-items: center;
-  background: #ebf0f5;
-  border-radius: 20px;
-  padding: 4px;
-  gap: 0;
-  height: 32px;
-}
-
-.values-view-btn {
-  height: 24px;
-  padding: 0 12px;
-  border-radius: 20px;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  font-family: inherit;
-  color: #3a3a3a;
-  cursor: pointer;
-  transition: background 0.15s ease;
-  white-space: nowrap;
-}
-
-.values-view-btn.active {
-  background: white;
-}
-
 .value-bubble-wrap {
   display: flex;
   flex-wrap: wrap;
@@ -192,6 +164,19 @@
   padding: 6px;
 }
 
+.value-evidence-source {
+  align-self: flex-start;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e8edf4;
+  color: #4c596b;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.value-evidence-source-conversation { background: #e9edff; color: #4653ae; }
+.value-evidence-source-calendar_action { background: #e5f5eb; color: #28653e; }
+
 .value-evidence-modal-quote {
   font-size: 11px;
   color: #475261;
@@ -266,6 +251,12 @@
 .value-bubble-violet {
   background: rgba(203, 167, 246, 0.36);
   border-color: #C281EB;
+  color: #3A3A3A;
+}
+
+.value-bubble-neutral {
+  background: #eef1f4;
+  border-color: #9aa3ad;
   color: #3A3A3A;
 }
 

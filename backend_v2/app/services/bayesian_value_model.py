@@ -6,9 +6,8 @@ from itertools import combinations
 import numpy as np
 
 from ..config import ModelConfig
+from .value_taxonomy import VALUE_BY_ID, VALUE_IDS
 
-VALUE_IDS = ("wellbeing", "achievement_growth", "relationships_care", "autonomy_privacy", "responsibility_fairness")
-VALUE_LABELS = {"wellbeing": "Wellbeing", "achievement_growth": "Achievement & Growth", "relationships_care": "Relationships & Care", "autonomy_privacy": "Autonomy & Privacy", "responsibility_fairness": "Responsibility & Fairness"}
 
 
 @lru_cache(maxsize=8)
@@ -91,7 +90,13 @@ class GridBayesianValueModel:
         for i, value_id in enumerate(VALUE_IDS):
             variance = float(self.posterior @ ((self.grid[:, i] - means[i]) ** 2))
             relative = float(means[i] * 100)
-            result.append({"id": value_id, "label": VALUE_LABELS[value_id], "posterior_mean": round(float(means[i]), 6), "relative_weight": round(relative, 2), "weight": round(relative, 2), "posterior_std": round(variance ** 0.5, 6), "uncertainty": round(variance ** 0.5 * 100, 2), "credible_interval_90": {"lower": round(weighted_quantile(self.grid[:, i], self.posterior, 0.05), 6), "upper": round(weighted_quantile(self.grid[:, i], self.posterior, 0.95), 6)}})
+            definition = VALUE_BY_ID[value_id]
+            result.append({"id": value_id, "label": definition["label"], "tone": definition["tone"],
+                           "description": definition["description"], "posterior_mean": round(float(means[i]), 6),
+                           "relative_weight": round(relative, 2), "weight": round(relative, 2),
+                           "posterior_std": round(variance ** 0.5, 6), "uncertainty": round(variance ** 0.5 * 100, 2),
+                           "credible_interval_90": {"lower": round(weighted_quantile(self.grid[:, i], self.posterior, 0.05), 6),
+                                                    "upper": round(weighted_quantile(self.grid[:, i], self.posterior, 0.95), 6)}})
         return result
 
 
