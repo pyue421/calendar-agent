@@ -15,6 +15,9 @@ ALGORITHM_VERSION = "conversation_prior_builder_v1"
 def build_conversation_prior(model, reviewed_evidence: list[dict], config: OnboardingConfig) -> dict:
     scores = {value_id: 0.0 for value_id in VALUE_IDS}
     for item in reviewed_evidence:
+        if not item.get("included_in_prior", True):
+            item["deterministic_contribution"] = 0.0
+            continue
         contribution = (RELATION[item["relation"]] * DIRECTNESS[item["directness"]] *
                         STRENGTH[item["strength"]] * REVIEW[item["review_status"]])
         scores[item["value_id"]] += contribution

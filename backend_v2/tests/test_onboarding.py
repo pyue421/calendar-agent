@@ -4,13 +4,15 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import ModelConfig, OnboardingConfig
+from app.config import LLMConfig, ModelConfig, OnboardingConfig, StudyConfigurationError, validate_study_configuration
 from app.main import app
 from app.models import OnboardingEvidenceCandidate
 from app.services.bayesian_value_model import GridBayesianValueModel
 from app.services.conversation_prior_service import build_conversation_prior
 from app.services.onboarding_protocol_service import PROTOCOL
+from app.services.onboarding_evidence_service import mark_prior_inclusions, validate_grounded_evidence_candidate
 from app.services.session_service import sessions
+from app.services.value_taxonomy import TAXONOMY_VERSION
 
 client = TestClient(app)
 
@@ -42,10 +44,12 @@ ANSWERS = [
 ]
 
 
-def answer_five(sid):
+def answer_all(sid):
     start(sid)
     result = None
-    for answer in ANSWERS[:5]: result = client.post(f"/api/sessions/{sid}/onboarding/messages", json={"message": answer}).json()
+    for answer in ANSWERS:
+        result = client.post(f"/api/sessions/{sid}/onboarding/messages", json={"message": answer}).json()
+        if result.get("question_id") is None: break
     return result
 
 
@@ -97,7 +101,7 @@ def test_deterministic_prior_scores_mixture_and_model_validation():
 
 
 def test_successful_completion_is_atomic_visible_and_idempotent():
-    sid, _ = fresh(); answer_five(sid)
+    sid, _ = fresh(); answer_all(sid)
     state = sessions.get(sid); neutral = state["model"].posterior_copy(); version = state["version"]
     result = client.post(f"/api/sessions/{sid}/onboarding/complete").json()
     assert result["onboarding_status"] == "complete" and result["prior_status"] == "conversation_informed"
@@ -113,13 +117,14 @@ def test_successful_completion_is_atomic_visible_and_idempotent():
 
 def test_insufficient_grounded_evidence_uses_neutral_fallback():
     sid, _ = fresh(); start(sid)
-    for _ in range(5): client.post(f"/api/sessions/{sid}/onboarding/messages", json={"message": "My schedule varies from week to week without a clear pattern."})
+    while sessions.get(sid)["onboarding"]["current_question_id"]:
+        client.post(f"/api/sessions/{sid}/onboarding/messages", json={"message": "My schedule varies from week to week without a clear pattern."})
     result = client.post(f"/api/sessions/{sid}/onboarding/complete").json()
     assert result["onboarding_status"] == "neutral_fallback" and sessions.get(sid)["onboarding"]["reviewed_evidence"] == []
 
 
 def test_export_contains_sensitive_provenance_but_completion_response_does_not():
-    sid, _ = fresh(); answer_five(sid); client.post(f"/api/sessions/{sid}/onboarding/complete")
+    sid, _ = fresh(); answer_all(sid); client.post(f"/api/sessions/{sid}/onboarding/complete")
     exported = client.get(f"/api/sessions/{sid}/export").json()["onboarding"]
     assert exported["turns"] and exported["reviewed_evidence"] and exported["prompt_versions"]
     assert exported["conversation_prior_distribution"] and exported["participant_saw_prior_information"] is False
@@ -142,7 +147,7 @@ def test_completion_failure_is_retryable_and_does_not_partially_mutate():
         def extract(self, participant_turns):
             del participant_turns
             raise RuntimeError("temporary extraction failure")
-    sid, _ = fresh(); answer_five(sid)
+    sid, _ = fresh(); answer_all(sid)
     state = sessions.get(sid); before = state["model"].posterior_copy(); version = state["version"]
     original = sessions.onboarding_extractor; sessions.onboarding_extractor = FailingExtractor()
     try:
@@ -152,3 +157,94 @@ def test_completion_failure_is_retryable_and_does_not_partially_mutate():
         sessions.onboarding_extractor = original
     assert np.array_equal(before, state["model"].posterior) and state["version"] == version
     assert state["onboarding_status"] == "active" and state["onboarding"]["last_error"]["retryable"]
+
+
+def candidate(turn_id="t1", question_id="typical_week", quote="family time"):
+    return OnboardingEvidenceCandidate(turn_id=turn_id, question_id=question_id, exact_quote=quote,
+        value_id="relationships_care", relation="supports", directness="implicit", strength="moderate")
+
+
+def test_grounding_binds_exact_excerpts_to_turn_and_question():
+    turns = [{"turn_id": "t1", "role": "participant", "question_id": "typical_week",
+              "message": "I protect family time during busy weeks."},
+             {"turn_id": "a1", "role": "assistant", "question_id": "typical_week", "message": "family time"}]
+    assert validate_grounded_evidence_candidate(candidate(quote=turns[0]["message"]), turns)["turn_id"] == "t1"
+    assert validate_grounded_evidence_candidate(candidate(quote="protect family time"), turns)["turn_id"] == "t1"
+    assert validate_grounded_evidence_candidate(candidate(quote="family time"), turns)["turn_id"] == "t1"
+    with pytest.raises(ValueError): validate_grounded_evidence_candidate(candidate(turn_id="missing"), turns)
+    with pytest.raises(ValueError): validate_grounded_evidence_candidate(candidate(question_id="successful_week"), turns)
+    with pytest.raises(ValueError): validate_grounded_evidence_candidate(candidate(turn_id="a1"), turns)
+    with pytest.raises(ValueError): validate_grounded_evidence_candidate(candidate(quote="not in the answer"), turns)
+
+
+def test_duplicate_evidence_is_retained_but_scored_once():
+    records = [
+        {**candidate().model_dump(), "review_status": "ambiguous"},
+        {**candidate().model_dump(), "review_status": "accepted", "directness": "explicit", "strength": "strong"},
+    ]
+    mark_prior_inclusions(records)
+    assert len(records) == 2 and sum(item["included_in_prior"] for item in records) == 1
+    assert records[0]["prior_exclusion_reason"] == "duplicate_turn_value_relation"
+    model = GridBayesianValueModel(ModelConfig(grid_step=.2))
+    built = build_conversation_prior(model, records, OnboardingConfig(min_accepted_evidence=1))
+    assert built["aggregate_scores"]["relationships_care"] == 1.5
+
+
+def test_all_questions_are_required_and_final_skip_enables_completion():
+    sid, _ = fresh(); start(sid)
+    for answer in ANSWERS[:5]: sessions.onboarding_message(sid, answer)
+    with pytest.raises(ValueError, match="All six core questions"):
+        sessions.complete_onboarding(sid)
+    record = sessions.get(sid)["onboarding"]
+    assert record["current_question_id"] == "rescheduling_concerns"
+    skipped = sessions.skip_onboarding_question(sid, "rescheduling_concerns")
+    assert skipped["can_complete"] and skipped["question_id"] is None
+    completed = sessions.complete_onboarding(sid)
+    assert completed["onboarding_status"] == "complete"
+
+
+def test_initial_profile_metadata_view_logging_and_active_event_restoration():
+    sid, _ = fresh(); answer_all(sid); completed = sessions.complete_onboarding(sid)
+    assert completed["profile_source"] == "onboarding_conversation"
+    assert completed["profile_stage"] == "conversation_initial"
+    assert sessions.get(sid)["onboarding"]["initial_profile_summary"] == completed["current_profile"]
+    viewed = sessions.initial_profile_viewed(sid, completed["initial_profile_version"], "2026-01-01T00:00:00Z", "values_panel")
+    sessions.initial_profile_viewed(sid, completed["initial_profile_version"], "2026-01-02T00:00:00Z", "values_panel")
+    assert viewed["initial_profile_displayed"] and sessions.get(sid)["onboarding"]["initial_profile_displayed_at"] == "2026-01-01T00:00:00Z"
+    with pytest.raises(ValueError): sessions.initial_profile_viewed(sid, 999, "2026-01-01T00:00:00Z", "values_panel")
+    started = sessions.next_event(sid); restored = sessions.state(sid)
+    assert restored["active_event"]["scenario_id"] == started["event"]["scenario_id"]
+    assert restored["profile_source"] == "onboarding_conversation" and restored["profile_stage"] == "calendar_updating"
+    interaction = sessions.profile_interaction(sid, "value_bubble_opened", "wellbeing", completed["profile_version"],
+        "conversation_initial", 0, "2026-01-01T00:00:00Z", "onboarding")
+    assert sessions.export(sid)["profile_interactions"] == [interaction]
+
+
+def test_study_mode_rejects_deterministic_roles_and_missing_key():
+    with pytest.raises(StudyConfigurationError, match="requires Gemini"):
+        validate_study_configuration(LLMConfig(parser="deterministic", api_key="x"), True)
+    with pytest.raises(StudyConfigurationError, match="requires GEMINI_API_KEY"):
+        validate_study_configuration(LLMConfig(parser="gemini", api_key=None, onboarding_interviewer="gemini",
+            onboarding_extractor="gemini", onboarding_reviewer="gemini"), True)
+
+
+def test_pending_followup_blocks_informed_completion():
+    sid, _ = fresh(); start(sid); record = sessions.get(sid)["onboarding"]
+    record["answered_question_ids"] = [item["id"] for item in PROTOCOL["core_questions"]]
+    record["current_question_id"] = None; record["awaiting_followup"] = True
+    assert not sessions._can_complete(record)
+    with pytest.raises(ValueError, match="no follow-up pending"):
+        sessions.complete_onboarding(sid)
+
+
+def test_gemini_reviewer_prompt_contains_versioned_taxonomy(monkeypatch):
+    import app.llm.onboarding_evidence_reviewer as reviewer_module
+    captured = {}
+    def fake_generate(config, system_prompt, prompt, response_model):
+        del config, system_prompt
+        captured["prompt"] = prompt
+        return response_model(reviews=[]), "{}"
+    monkeypatch.setattr(reviewer_module, "generate_structured", fake_generate)
+    result = reviewer_module.GeminiOnboardingEvidenceReviewer(LLMConfig(api_key="test")).review([], [])
+    assert TAXONOMY_VERSION in captured["prompt"] and "Achievement and Development" in captured["prompt"]
+    assert result.taxonomy_version == TAXONOMY_VERSION

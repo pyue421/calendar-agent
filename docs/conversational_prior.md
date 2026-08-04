@@ -34,6 +34,22 @@ Insufficient grounded evidence, no extracted evidence, participant choice, or di
 
 After a conversation-informed prior is successfully applied, `profile_status` becomes `initialized` and the five bubbles show that weak starting estimate during Round 1. Reviewed onboarding evidence is attached to the corresponding bubbles. A neutral fallback contains no conversational evidence, so its symmetric mathematical prior remains hidden until the first decision-plus-rationale initialization point. Round 1 previews retain their existing behavior.
 
+## Automatic completion and Round 1
+
+All six core question IDs must be answered or skipped, at least five must be answered, and no follow-up may remain pending. Handling the final question automatically freezes the transcript, extracts and reviews evidence, applies the weak prior, renders the initial profile, and starts Round 1. There is no participant-facing Finish or Start Round 1 control in this transition. Skipping the final question follows the same path when the five-answer minimum is satisfied.
+
+## Grounding and duplicate control
+
+Each evidence excerpt is validated as a non-empty exact substring of the identified participant turn, with matching turn and question IDs. Assistant text and excerpts from a different turn are rejected. All reviewed candidates remain in the research export. Before scoring, at most one candidate per `(turn_id, value_id, relation)` is selected by review status, directness, strength, and original candidate order. Excluded records carry an explicit exclusion reason.
+
+## Research configuration and exposure audit
+
+Deterministic interviewer, extractor, and reviewer implementations are development and test fallbacks, not a study configuration. `STUDY_MODE=true` requires Gemini for those roles and the rationale parser and requires configured Gemini access. The reviewer receives the complete versioned taxonomy independently of the extractor.
+
+Generating an initial profile does not prove that it was seen. The values panel records an idempotent `initial-profile-viewed` event only after five conversation-informed bubbles render. Bubble, evidence, and modal-close interactions are logged separately without transmitting hidden posterior calculations.
+
+Showing a preliminary profile can anchor later decisions or explanations. This exposure must be considered in piloting, calibration, study design, and interpretation.
+
 ## Reproducibility and validity risks
 
 Exports record exact transcripts, structured outputs, review decisions, deterministic contributions, base/evidence/mixed distributions, prompts, models, protocol version, algorithm version, parameters, and whether prior information was shown. Known risks include language-model mapping error, keyword/context sensitivity, limited behavioral generalization from a short interview, differential response detail, and anchoring if visibility protections regress.

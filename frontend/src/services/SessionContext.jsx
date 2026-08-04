@@ -38,12 +38,16 @@ export default function SessionProvider({children}) {
   const [onboardingLoading, setOnboardingLoading] = useState(false)
   const [onboardingError, setOnboardingError] = useState(null)
   const [onboardingAssistantMessage, setOnboardingAssistantMessage] = useState(null)
+  const completionInFlight = useRef(null)
+  const roundStartInFlight = useRef(null)
   const applyState = useCallback(data => {
     setState(previous => ({...previous, ...data,
       ...(data.progress ? {onboarding_progress: data.progress} : {}),
       ...(Object.hasOwn(data, "question_id") ? {onboarding_question_id: data.question_id} : {})}))
     if (data.current_profile) setCurrentProfile(data.current_profile)
     if (data.calendar) setCalendarEvents(data.calendar)
+    if (data.active_event) setEvent(data.active_event)
+    else if (Object.hasOwn(data, "active_event") || ["complete", "session_complete"].includes(data.round_status)) setEvent(null)
   }, [])
   const initialize = useCallback(async () => {
     setLoading(true)
@@ -121,27 +125,52 @@ export default function SessionProvider({children}) {
     } catch (error) { setOnboardingError(error.detail || {message: error.message, retryable: true}); throw error }
     finally { setOnboardingLoading(false) }
   }
-  async function finishOnboardingAndStartRound(path) {
-    setOnboardingLoading(true); setOnboardingError(null)
-    try {
-      const completed = await request(`/api/sessions/${sessionId}/onboarding/${path}`, {method: "POST"})
-      applyState(completed)
+  async function startFirstRound(completed) {
+    if (roundStartInFlight.current) return roundStartInFlight.current
+    roundStartInFlight.current = (async () => {
+      await new Promise(resolve => (window.requestAnimationFrame || window.setTimeout)(resolve))
       const round = await request(`/api/sessions/${sessionId}/events/next`, {method: "POST"})
       applyState(round); if (round.event) setEvent(round.event)
-      setOnboardingAssistantMessage(null)
       return {...completed, started_round: round}
-    } catch (error) { setOnboardingError(error.detail || {message: error.message, retryable: true}); throw error }
-    finally { setOnboardingLoading(false) }
+    })()
+    try { return await roundStartInFlight.current } finally { roundStartInFlight.current = null }
+  }
+  async function maybeCompleteOnboarding(response) {
+    if (response?.question_id !== null || !response?.can_complete || response?.onboarding_status !== "active") return response
+    if (completionInFlight.current) return completionInFlight.current
+    completionInFlight.current = (async () => {
+      const completed = await request(`/api/sessions/${sessionId}/onboarding/complete`, {method: "POST"})
+      applyState(completed); setOnboardingAssistantMessage(null)
+      return startFirstRound(completed)
+    })()
+    try { return await completionInFlight.current }
+    catch (error) { setOnboardingError(error.detail || {message: error.message, retryable: true}); throw error }
+    finally { completionInFlight.current = null }
+  }
+  async function useNeutralAndStartRound() {
+    if (completionInFlight.current) return completionInFlight.current
+    setOnboardingLoading(true); setOnboardingError(null)
+    completionInFlight.current = (async () => {
+      const completed = await request(`/api/sessions/${sessionId}/onboarding/use-neutral-prior`, {method: "POST"})
+      applyState(completed); setOnboardingAssistantMessage(null)
+      return startFirstRound(completed)
+    })()
+    try { return await completionInFlight.current }
+    catch (error) { setOnboardingError(error.detail || {message: error.message, retryable: true}); throw error }
+    finally { completionInFlight.current = null; setOnboardingLoading(false) }
   }
   const startOnboarding = () => onboardingCall("start")
   const sendOnboardingMessage = async message => {
     const data = await onboardingCall("messages", {message})
-    if (data.can_complete && !data.question_id) return finishOnboardingAndStartRound("complete")
-    return data
+    return maybeCompleteOnboarding(data)
   }
-  const skipOnboardingQuestion = questionId => onboardingCall("skip-question", {question_id: questionId})
-  const completeOnboarding = () => finishOnboardingAndStartRound("complete")
-  const useNeutralPrior = () => finishOnboardingAndStartRound("use-neutral-prior")
+  const skipOnboardingQuestion = async questionId => maybeCompleteOnboarding(
+    await onboardingCall("skip-question", {question_id: questionId}))
+  const useNeutralPrior = () => useNeutralAndStartRound()
+  const logInitialProfileViewed = profileVersion => request(`/api/sessions/${sessionId}/onboarding/initial-profile-viewed`,
+    {method: "POST", body: JSON.stringify({profile_version: profileVersion, displayed_at: new Date().toISOString(), source: "values_panel"})})
+  const logProfileInteraction = interaction => request(`/api/sessions/${sessionId}/profile-interactions`,
+    {method: "POST", body: JSON.stringify({...interaction, timestamp: new Date().toISOString()})})
   const committedValues = normalizeValueProfile(currentProfile)?.profile || []
   const previewValueWeights = preview?.feasible !== false ? preview?.preview_profile || null : null
   const activePreviewTransition = preview?.action === activePreviewTarget ? preview.preview_transition || null : null
@@ -152,7 +181,7 @@ export default function SessionProvider({children}) {
     latestRoundTransition, candidateEvent, setCandidateEvent, calendarEvents, loading, startRound, loadPreview, commitDecision, sendChat,
     calendarActionLoading, calendarActionError, sendCalendarAction,
     onboardingLoading, onboardingError, onboardingAssistantMessage, startOnboarding, sendOnboardingMessage,
-    skipOnboardingQuestion, completeOnboarding, useNeutralPrior,
+    skipOnboardingQuestion, useNeutralPrior, logInitialProfileViewed, logProfileInteraction,
     invalidatePreviewRequests, beginPreviewTarget,
     clearPreview: () => {previewRequest.current += 1; setPreview(null); setPreviewLoading(false); setActivePreviewTarget(null)}}}>{children}</SessionContext.Provider>
 }

@@ -8,7 +8,7 @@ export default function ChatbotPanel() {
   const session = useSession()
   const {sessionId, current_round, total_rounds, round_status, loading, awaiting_rationale, startRound, sendChat,
     onboarding_status, onboarding_progress, onboarding_question_id, onboardingLoading, onboardingError,
-    onboardingAssistantMessage, onboarding_turns, sendOnboardingMessage, skipOnboardingQuestion, completeOnboarding, useNeutralPrior} = session
+    onboardingAssistantMessage, onboarding_turns, sendOnboardingMessage, skipOnboardingQuestion, useNeutralPrior} = session
   const [messages, setMessages] = useState([{id: "welcome", role: "assistant", text: "Welcome to the calendar reflection study."}])
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
@@ -30,12 +30,24 @@ export default function ChatbotPanel() {
     setMessages(items => [...items, {id: `onboarding-${Date.now()}`, role: "assistant", text: onboardingAssistantMessage,
       meta: onboarding_progress ? `Question ${Math.min(onboarding_progress.answered_core + 1, onboarding_progress.total_core)} of ${onboarding_progress.total_core}` : "Onboarding"}])
   }, [onboardingAssistantMessage, onboarding_progress])
+  const restoredRound = useRef(null)
+  useEffect(() => {
+    if (!session.event || restoredRound.current === current_round) return
+    restoredRound.current = current_round
+    const card = {...session.event, round: current_round}
+    setMessages(items => [...items,
+      {id: `round-${current_round}-restored`, role: "assistant", meta: `Round ${current_round} of ${total_rounds}`,
+        text: session.event.description, card},
+      ...(awaiting_rationale ? [{id: `reflection-${current_round}-restored`, role: "assistant",
+        text: "What mattered most to you in making that decision?", meta: "Reflection"}] : [])])
+  }, [session.event, current_round, total_rounds, awaiting_rationale])
 
   async function handleStartRound() {
     setSending(true)
     try {
       const data = await startRound()
       if (data.status === "session_complete") { setMessages(items => [...items, {id: "complete", role: "assistant", text: "All 15 rounds are complete. Thank you for reflecting on these scheduling decisions."}]); return }
+      restoredRound.current = data.round
       setMessages(items => [...items, {id: `round-${data.round}`, role: "assistant", meta: `Round ${data.round} of ${data.total_rounds}`, text: data.event.description, card: {...data.event, round: data.round}}])
     } catch (error) { setMessages(items => [...items, {id: `err-${Date.now()}`, role: "assistant", text: error.message}]) }
     finally { setSending(false) }
@@ -72,6 +84,7 @@ export default function ChatbotPanel() {
   function appendStartedRound(data) {
     const round = data?.started_round
     if (!round?.event) return
+    restoredRound.current = round.round
     lastOnboardingMessage.current = data.assistant_message
     setMessages(items => [...items,
       {id: `onboarding-complete-${Date.now()}`, role: "assistant", text: data.assistant_message},
@@ -82,7 +95,7 @@ export default function ChatbotPanel() {
   const canStart = session.can_start_round && round_status === "complete" && current_round < total_rounds
   return <section className="chatbot-panel"><header className="chatbot-header"><div className="chatbot-header-left"><span className="chatbot-header-title">DISCOVER Agent<span className="chatbot-round-label">{`Round ${current_round} of ${total_rounds} · ${round_status}`}</span></span></div></header>
     <div className="chatbot-messages" ref={scrollRef}>{messages.map(message => message.role === "user" ? <div key={message.id} className="chatbot-msg chatbot-msg-user"><div className="chatbot-user-bubble">{message.content}</div></div> : <div key={message.id} className="chatbot-msg chatbot-msg-assistant">{message.meta && <div className="chatbot-message-meta">{message.meta}</div>}<p className="chatbot-assistant-text">{message.text}</p>{message.card && <ScenarioCard card={message.card} disabled={Boolean(message.card.committedAction)} onDecision={(action, schedule) => handleDecision(message.id, action, schedule)}/>}</div>)}{sending && <div className="chatbot-msg chatbot-msg-assistant"><p className="chatbot-assistant-text chatbot-thinking">Thinking…</p></div>}</div>
-    <div className="chatbot-input-wrap">{onboardingActive && <div className="onboarding-controls"><button type="button" onClick={() => onboardingAction(() => skipOnboardingQuestion(onboarding_question_id))} disabled={!onboarding_question_id || onboardingLoading}>Skip question</button><button type="button" onClick={() => onboardingAction(completeOnboarding)} disabled={!onboarding_progress || onboarding_progress.answered_core < onboarding_progress.required_core || onboardingLoading}>Finish onboarding</button><button type="button" onClick={() => onboardingAction(useNeutralPrior)} disabled={onboardingLoading}>Continue with a neutral starting model</button></div>}{onboardingError && <p className="onboarding-error" role="alert">{onboardingError.message || "Onboarding could not be completed."} {onboardingError.retryable && "You can retry or continue with a neutral model."}</p>}{canStart && <div className="round-controls"><button className="preview-button" onClick={handleStartRound} disabled={sending}>{current_round === 0 ? "Start Round 1" : `Start Round ${current_round + 1}`}</button></div>}<div className="chatbot-input-box"><textarea className="chatbot-textarea" placeholder={onboardingActive ? "Share your answer, or skip this question" : awaiting_rationale ? "Explain what mattered in your decision" : "Ask about the scheduling options"} value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => {if (event.key === "Enter" && !event.shiftKey) {event.preventDefault(); sendMessage()}}} rows={1} disabled={!sessionId || loading || sending || onboardingLoading}/><div className="chatbot-input-footer"><div/><button type="button" className="chatbot-send-btn" onClick={sendMessage} aria-label="Send" disabled={sending || onboardingLoading || !input.trim()}><svg viewBox="0 0 14 14" fill="none"><path d="M7 11V3M3 7l4-4 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></button></div></div></div>
+    <div className="chatbot-input-wrap">{onboardingActive && <div className="onboarding-controls"><button type="button" onClick={() => onboardingAction(() => skipOnboardingQuestion(onboarding_question_id))} disabled={!onboarding_question_id || onboardingLoading}>Skip question</button><button type="button" onClick={() => onboardingAction(useNeutralPrior)} disabled={onboardingLoading}>Continue with a neutral starting model</button></div>}{onboardingError && <p className="onboarding-error" role="alert">{onboardingError.message || "Onboarding could not be completed."} {onboardingError.retryable && "You can retry or continue with a neutral model."}</p>}{canStart && <div className="round-controls"><button className="preview-button" onClick={handleStartRound} disabled={sending}>{`Start Round ${current_round + 1}`}</button></div>}<div className="chatbot-input-box"><textarea className="chatbot-textarea" placeholder={onboardingActive ? "Share your answer, or skip this question" : awaiting_rationale ? "Explain what mattered in your decision" : "Ask about the scheduling options"} value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => {if (event.key === "Enter" && !event.shiftKey) {event.preventDefault(); sendMessage()}}} rows={1} disabled={!sessionId || loading || sending || onboardingLoading}/><div className="chatbot-input-footer"><div/><button type="button" className="chatbot-send-btn" onClick={sendMessage} aria-label="Send" disabled={sending || onboardingLoading || !input.trim()}><svg viewBox="0 0 14 14" fill="none"><path d="M7 11V3M3 7l4-4 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></button></div></div></div>
   </section>
 }
 

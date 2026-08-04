@@ -59,6 +59,29 @@ class OnboardingSkipRequest(BaseModel):
     question_id: str = Field(min_length=1, max_length=100)
 
 
+class InitialProfileViewedRequest(BaseModel):
+    profile_version: int = Field(ge=0)
+    displayed_at: str
+    source: Literal["values_panel"]
+
+
+class ProfileInteractionRequest(BaseModel):
+    event_type: Literal["value_bubble_opened", "value_evidence_opened", "value_modal_closed"]
+    value_id: str
+    profile_version: int = Field(ge=0)
+    profile_stage: str
+    round: int = Field(ge=0)
+    timestamp: str
+    source_phase: str
+
+    @field_validator("value_id")
+    @classmethod
+    def interaction_value_id(cls, value: str) -> str:
+        allowed = {"wellbeing", "achievement_growth", "relationships_care", "autonomy_privacy", "responsibility_fairness"}
+        if value not in allowed: raise ValueError("Unknown value identifier")
+        return value
+
+
 class OnboardingEvidenceCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     turn_id: str

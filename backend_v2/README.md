@@ -41,7 +41,7 @@ where `r = RATIONALE_RELIABILITY`. The unreferenced `(1-r)` component represents
 
 Summaries return posterior mean, relative weight, standard deviation, and a weighted 90% credible interval. **Relative weight means “posterior expected relative scheduling priority under the current model.”** It is not confidence, percentage of evidence, percentage of personality, or objective value importance.
 
-The internal prior is never presented as the participant’s profile. A session begins with `profile_status="uninitialized"` and an empty current profile. Round 1 previews apply hypothetical actions to a cloned prior. The first committed profile appears only after both the first action and the participant’s rationale have updated the model.
+There are two supported starting paths. In the conversation-informed path, six standardized scheduling questions produce independently reviewed, quote-grounded evidence. Versioned deterministic code converts deduplicated evidence into a weak Bayesian prior, which becomes the participant-visible initial bubble baseline before Round 1 starts automatically. In the neutral path, the symmetric prior remains hidden, Round 1 starts automatically, and the first visible profile appears only after the first action and rationale.
 
 ## Calendar and controlled scenarios
 
@@ -65,7 +65,7 @@ The report gives posterior means, maximum absolute difference, and L1 distance r
 
 ## Configuration
 
-See `.env.example`. The research parameters are `GRID_STEP`, `PRIOR_ALPHA`, `BETA`, and `RATIONALE_RELIABILITY`; evidence-link filtering uses `EVIDENCE_DELTA_THRESHOLD`.
+See `.env.example` for deterministic local development and `.env.study.example` for research deployment. `STUDY_MODE=true` requires Gemini for the rationale parser and all three onboarding roles plus a configured API key; startup fails rather than silently using keyword fallbacks. The research parameters are `GRID_STEP`, `PRIOR_ALPHA`, `BETA`, and `RATIONALE_RELIABILITY`; evidence-link filtering uses `EVIDENCE_DELTA_THRESHOLD`.
 
 ## Verification and performance
 
@@ -87,5 +87,5 @@ On the development machine used for this revision, constructing the cached 0.025
 - `app/services/session_service.py` — uninitialized/initialized visibility, rounds, exact evidence, export.
 - `app/llm/rationale_parser.py` and `app/models.py` — five-value structured rationale vocabulary.
 - `scripts/prior_sensitivity.py` — offline alpha replay analysis.
-- `frontend/src/services/SessionContext.jsx`, `components/home/ChatbotPanel.jsx`, and `components/home/values.jsx` — immediate Round 1, hidden initial profile, anchored previews, and exact evidence UI.
+- `frontend/src/services/SessionContext.jsx`, `components/home/ChatbotPanel.jsx`, and `components/home/values.jsx` — automatic onboarding completion, initial-profile exposure, Round 1 restoration, anchored previews, and exact evidence UI.
 - `tests/test_complete_flow.py` — grid, first-use, preview, calendar, evidence, 15-round, and performance regression coverage.

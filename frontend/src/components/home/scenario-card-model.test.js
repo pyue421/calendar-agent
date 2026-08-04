@@ -197,10 +197,10 @@ test("conversational onboarding precedes Round 1 with disclosure and progress", 
   assert.match(chat, /session\.can_start_round/)
   assert.match(chat, /onboardingActive/)
 })
-test("onboarding has skip, finish, retry messaging, and neutral controls", () => {
+test("onboarding has skip, retry, and neutral controls without manual finish", () => {
   const chat = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
   assert.match(chat, /Skip question/)
-  assert.match(chat, /Finish onboarding/)
+  assert.doesNotMatch(chat, /Finish onboarding/)
   assert.match(chat, /Continue with a neutral starting model/)
   assert.match(chat, /You can retry or continue with a neutral model/)
 })
@@ -210,12 +210,13 @@ test("onboarding answers use dedicated APIs rather than rationale chat", () => {
   assert.match(context, /onboardingCall\("messages", \{message\}\)/)
   assert.match(chat, /onboarding_status === "active"[^]*sendOnboardingMessage\(text\)/)
 })
-test("finishing onboarding automatically starts Round 1", () => {
+test("handling the final onboarding question automatically starts Round 1", () => {
   const context = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
   const chat = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
-  assert.match(context, /finishOnboardingAndStartRound/)
-  assert.match(context, /onboarding\/\$\{path\}[^]*events\/next/)
-  assert.match(context, /data\.can_complete && !data\.question_id/)
+  assert.match(context, /maybeCompleteOnboarding/)
+  assert.match(context, /onboarding\/complete/)
+  assert.match(context, /events\/next/)
+  assert.match(context, /response\?\.question_id !== null[^]*!response\?\.can_complete/)
   assert.match(chat, /appendStartedRound/)
   assert.match(chat, /card: \{\.\.\.round\.event/)
   assert.doesNotMatch(chat, /\["ready", "complete"\]\.includes\(round_status\)/)

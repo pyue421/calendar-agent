@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .models import CalendarActionRequest, ChatRequest, DecisionRequest, OnboardingMessageRequest, OnboardingSkipRequest, PreviewRequest, RationaleRequest, SessionCreate
+from .models import CalendarActionRequest, ChatRequest, DecisionRequest, InitialProfileViewedRequest, OnboardingMessageRequest, OnboardingSkipRequest, PreviewRequest, ProfileInteractionRequest, RationaleRequest, SessionCreate
 from .llm.rationale_parser import RationaleParserConfigurationError, RationaleParserError, RationaleParserUnavailableError
-from .config import LLM_CONFIG
+from .config import LLM_CONFIG, RESEARCH_CONFIGURATION_VALID, STUDY_MODE
 from .services.session_service import sessions
 from .services.calendar_conflict_service import CalendarConflictError
 
@@ -32,6 +32,8 @@ def call(fn, *args):
 def health():
     return {
         "ok": True,
+        "study_mode": STUDY_MODE,
+        "research_configuration_valid": RESEARCH_CONFIGURATION_VALID,
         "rationale_parser": LLM_CONFIG.parser,
         "rationale_model": LLM_CONFIG.model if LLM_CONFIG.parser == "gemini" else None,
         "llm_configured": bool(LLM_CONFIG.api_key) if LLM_CONFIG.parser == "gemini" else True,
@@ -67,6 +69,17 @@ def onboarding_complete(sid: str): return call(sessions.complete_onboarding, sid
 
 @app.post("/api/sessions/{sid}/onboarding/use-neutral-prior")
 def onboarding_neutral(sid: str): return call(sessions.use_neutral_prior, sid)
+
+
+@app.post("/api/sessions/{sid}/onboarding/initial-profile-viewed")
+def onboarding_profile_viewed(sid: str, body: InitialProfileViewedRequest):
+    return call(sessions.initial_profile_viewed, sid, body.profile_version, body.displayed_at, body.source)
+
+
+@app.post("/api/sessions/{sid}/profile-interactions")
+def profile_interaction(sid: str, body: ProfileInteractionRequest):
+    return call(sessions.profile_interaction, sid, body.event_type, body.value_id, body.profile_version,
+                body.profile_stage, body.round, body.timestamp, body.source_phase)
 
 
 @app.post("/api/sessions/{sid}/events/next")

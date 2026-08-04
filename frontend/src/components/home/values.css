@@ -12,6 +12,7 @@
 .value-bubble-violet { background: rgba(203, 167, 246, 0.36); border-color: #c281eb; }
 .value-bubble-neutral { background: #eef1f4; border-color: #9aa3ad; }
 .values-empty { margin: 18px; color: #68707b; font-size: 13px; line-height: 1.5; }
+.values-initial-explanation { flex-basis: 100%; margin: 0 8px 4px; color: #596477; font-size: 12px; line-height: 1.45; }
 .values-info-button { margin-top: 4px; padding: 0; border: 0; color: #5261d8; background: transparent; font-size: 11px; cursor: pointer; text-decoration: underline; }
 .values-method-note { margin: 0 14px 12px; padding: 10px; border-radius: 8px; background: #f1f3ff; color: #555e70; font-size: 11px; line-height: 1.45; }
 .values-method-note p { margin: 0 0 6px; }

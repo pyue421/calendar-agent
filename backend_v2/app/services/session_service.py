@@ -17,6 +17,7 @@ from .event_value_mapper import map_calendar_event
 from .profile_transition_service import compare_profiles
 from .onboarding_protocol_service import PROTOCOL, next_core_question, progress
 from .conversation_prior_service import build_conversation_prior
+from .onboarding_evidence_service import mark_prior_inclusions, validate_grounded_evidence_candidate
 from ..llm.onboarding_interviewer import DeterministicOnboardingInterviewer, GeminiOnboardingInterviewer
 from ..llm.onboarding_evidence_extractor import DeterministicOnboardingEvidenceExtractor, GeminiOnboardingEvidenceExtractor, PROMPT_VERSION as EXTRACTOR_PROMPT
 from ..llm.onboarding_evidence_reviewer import DeterministicOnboardingEvidenceReviewer, GeminiOnboardingEvidenceReviewer, PROMPT_VERSION as REVIEWER_PROMPT
@@ -50,12 +51,15 @@ class SessionService:
             "id": sid, "participant_id": participant_id, "version": 0,
             "model": GridBayesianValueModel(self.model_config), "week_start": week_start.isoformat(),
             "calendar": self.calendar_provider.create_calendar(sid, week_start), "created_at": now(),
-            "profile_status": "uninitialized", "prior_status": "neutral", "current_round": 0, "total_rounds": 15, "round_status": "onboarding",
+            "profile_status": "uninitialized", "profile_source": "neutral_base", "profile_stage": "uninitialized",
+            "initial_profile_version": None, "initial_profile_created_at": None,
+            "prior_status": "neutral", "current_round": 0, "total_rounds": 15, "round_status": "onboarding",
             "onboarding_status": "not_started", "onboarding_required": self.onboarding_config.enabled,
             "onboarding_protocol_version": PROTOCOL["protocol_version"], "onboarding": None,
             "scenario_order": [x["scenario_id"] for x in BANK.scenarios], "active_scenario_id": None,
             "active_event": None, "completed_rounds": [], "awaiting_decision": False, "awaiting_rationale": False,
             "previews": [], "decisions": [], "rationales": [], "value_evidence": [], "evidence_ledger": [], "chat_history": [],
+            "profile_interactions": [],
             "calendar_revision": 0, "calendar_actions": [], "calendar_action_attempts": [],
             "round_calendar_before": None, "round_calendar_adjustments": [],
         }
@@ -87,7 +91,11 @@ class SessionService:
     def state(self, sid: str) -> dict:
         s = self.get(sid)
         conflicts = self._active_request_conflicts(s)
+        safe_active_event = copy.deepcopy(s["active_event"]) if s["active_event"] and (s["awaiting_decision"] or s["awaiting_rationale"]) else None
         return {"session_id": sid, "profile_status": s["profile_status"], "profile_version": s["version"],
+                "profile_source": s["profile_source"], "profile_stage": s["profile_stage"],
+                "initial_profile_version": s["initial_profile_version"], "initial_profile_created_at": s["initial_profile_created_at"],
+                "initial_profile_displayed": bool(s.get("onboarding") and s["onboarding"].get("initial_profile_displayed")),
                 "prior_status": s["prior_status"], "onboarding_status": s["onboarding_status"],
                 "onboarding_required": s["onboarding_required"], "onboarding_protocol_version": s["onboarding_protocol_version"],
                 "onboarding_progress": progress(s["onboarding"]) if s["onboarding"] else None,
@@ -97,7 +105,8 @@ class SessionService:
                 "can_start_round": s["onboarding_status"] in {"complete", "neutral_fallback"},
                 "current_profile": self._profile(s), "calendar": s["calendar"], "week_start": s["week_start"],
                 "current_round": s["current_round"], "total_rounds": 15, "round_status": s["round_status"],
-                "active_scenario_id": s["active_scenario_id"], "completed_rounds": s["completed_rounds"],
+                "active_scenario_id": s["active_scenario_id"], "active_event": safe_active_event,
+                "completed_rounds": s["completed_rounds"],
                 "awaiting_decision": s["awaiting_decision"], "awaiting_rationale": s["awaiting_rationale"],
                 "calendar_revision": s["calendar_revision"], "active_request_conflicts": conflicts,
                 "accept_available": not conflicts,
@@ -120,7 +129,8 @@ class SessionService:
             "answered_question_ids": [], "skipped_question_ids": [], "followup_ids": [],
             "followup_question_ids": [], "current_question_id": first["id"], "awaiting_followup": False,
             "participant_turn_count": 0, "transcript_frozen_at": None, "last_error": None,
-            "participant_saw_prior_information": False}
+            "participant_saw_prior_information": False, "initial_profile_displayed": False,
+            "initial_profile_displayed_at": None, "displayed_profile_version": None}
         return {**self._onboarding_response(s), "assistant_message": "Before we begin, I’ll ask a few questions about how you usually organize your time. There are no right answers, and you can skip any question.\n\n" + first["wording"]}
 
     def _onboarding_response(self, s: dict) -> dict:
@@ -130,9 +140,22 @@ class SessionService:
             "prior_status": s["prior_status"], "onboarding_protocol_version": s["onboarding_protocol_version"],
             "question_id": record.get("current_question_id") if record else None,
             "progress": progress(record) if record else None,
-            "assistant_message": last_assistant,
-            "can_complete": bool(record and len(record["answered_question_ids"]) >= PROTOCOL["minimum_answered_core_questions"]),
-            "can_start_round": s["onboarding_status"] in {"complete", "neutral_fallback"}}
+            "assistant_message": last_assistant, "can_complete": self._can_complete(record),
+            "can_start_round": s["onboarding_status"] in {"complete", "neutral_fallback"},
+            "profile_status": s["profile_status"], "profile_source": s["profile_source"],
+            "profile_stage": s["profile_stage"], "profile_version": s["version"],
+            "initial_profile_version": s["initial_profile_version"],
+            "initial_profile_created_at": s["initial_profile_created_at"],
+            "initial_profile_displayed": bool(record and record.get("initial_profile_displayed")),
+            "current_profile": self._profile(s)}
+
+    @staticmethod
+    def _can_complete(record: dict | None) -> bool:
+        if not record or record.get("awaiting_followup") or record.get("current_question_id") is not None:
+            return False
+        all_ids = {item["id"] for item in PROTOCOL["core_questions"]}
+        handled = set(record["answered_question_ids"]) | set(record["skipped_question_ids"])
+        return handled == all_ids and len(record["answered_question_ids"]) >= PROTOCOL["minimum_answered_core_questions"]
 
     def onboarding_message(self, sid: str, message: str) -> dict:
         s = self.get(sid); record = s["onboarding"]
@@ -162,7 +185,7 @@ class SessionService:
         else:
             next_question = next_core_question(record)
             record["current_question_id"] = next_question["id"] if next_question else None
-            wording = ("Thank you. " + next_question["wording"]) if next_question else "Thank you. You can now finish onboarding."
+            wording = ("Thank you. " + next_question["wording"]) if next_question else "Thank you. I’ll prepare the scheduling scenarios now."
         assistant = {"turn_id": f"onboarding_turn_{uuid.uuid4().hex[:12]}", "role": "assistant",
                      "question_id": record["current_question_id"] or question_id, "message": wording, "created_at": now()}
         record["turns"].append(assistant)
@@ -175,7 +198,7 @@ class SessionService:
         if question_id not in record["skipped_question_ids"]: record["skipped_question_ids"].append(question_id)
         record["awaiting_followup"] = False
         next_question = next_core_question(record); record["current_question_id"] = next_question["id"] if next_question else None
-        wording = ("No problem. " + next_question["wording"]) if next_question else "No problem. You can now finish onboarding."
+        wording = ("No problem. " + next_question["wording"]) if next_question else "No problem. I’ll prepare the scheduling scenarios now."
         record["turns"].append({"turn_id": f"onboarding_turn_{uuid.uuid4().hex[:12]}", "role": "assistant",
             "question_id": record["current_question_id"], "message": wording, "created_at": now()})
         return {**self._onboarding_response(s), "assistant_message": wording}
@@ -184,8 +207,8 @@ class SessionService:
         s = self.get(sid); record = s["onboarding"]
         if s["onboarding_status"] in {"complete", "neutral_fallback"}: return self._onboarding_response(s)
         if s["onboarding_status"] != "active" or not record: raise ValueError("Onboarding is not active")
-        if len(record["answered_question_ids"]) < PROTOCOL["minimum_answered_core_questions"]:
-            raise ValueError("Answer at least five core questions, or continue with a neutral starting model.")
+        if not self._can_complete(record):
+            raise ValueError("All six core questions must be answered or skipped, with at least five answered and no follow-up pending.")
         record["transcript_frozen_at"] = now()
         s["onboarding_status"] = "extracting"; record["status"] = "extracting"
         participant_turns = [turn for turn in record["turns"] if turn["role"] == "participant"]
@@ -195,15 +218,18 @@ class SessionService:
             reviewed = self.onboarding_reviewer.review(extracted.evidence, participant_turns)
             evidence = []
             for index, candidate in enumerate(extracted.evidence):
-                if candidate.exact_quote not in {turn["message"] for turn in participant_turns}: raise ValueError("Onboarding evidence quote is not grounded in the transcript")
+                validate_grounded_evidence_candidate(candidate, participant_turns)
                 review = next(item for item in reviewed.reviews if item.candidate_index == index)
                 evidence.append({"evidence_id": f"onboarding_evidence_{uuid.uuid4().hex[:12]}", **candidate.model_dump(),
                     "review_status": review.review_status, "review_reason": review.review_reason,
                     "alternative_explanations": list(dict.fromkeys(candidate.alternative_explanations + review.alternative_explanations)),
                     "extractor_provider": extracted.provider, "extractor_model": extracted.model,
-                    "reviewer_provider": reviewed.provider, "reviewer_model": reviewed.model, "created_at": now()})
+                    "reviewer_provider": reviewed.provider, "reviewer_model": reviewed.model,
+                    "reviewer_taxonomy_version": reviewed.taxonomy_version, "created_at": now()})
+            mark_prior_inclusions(evidence)
             accepted = sum(item["review_status"] == "accepted" for item in evidence)
-            if accepted < self.onboarding_config.min_accepted_evidence:
+            included = sum(item["included_in_prior"] for item in evidence)
+            if included < self.onboarding_config.min_accepted_evidence:
                 s["model"].replace_posterior(original); return self._use_neutral(s, "insufficient_grounded_evidence")
             built = build_conversation_prior(s["model"], evidence, self.onboarding_config)
             before_summary = s["model"].summary()
@@ -217,23 +243,33 @@ class SessionService:
                 "relation": item["relation"], "strength": item["strength"],
                 "review_status": item["review_status"], "created_at": item["created_at"],
             } for item in evidence if item["review_status"] != "rejected")
+            created_at = now()
             s["version"] += 1; s["prior_status"] = "conversation_informed"; s["profile_status"] = "initialized"
+            s["profile_source"] = "onboarding_conversation"; s["profile_stage"] = "conversation_initial"
+            s["initial_profile_version"] = s["version"]; s["initial_profile_created_at"] = created_at
             s["onboarding_status"] = "complete"; s["round_status"] = "ready"
             record.update(status="complete", completed_at=now(), completion_reason="protocol_complete",
                 current_question_id=None,
                 extractor_result=extracted.raw_output, reviewer_result=reviewed.raw_output, reviewed_evidence=evidence,
-                accepted_evidence_count=accepted, aggregate_scores=built["aggregate_scores"], clipped_scores=built["clipped_scores"],
+                total_extracted_evidence_count=len(extracted.evidence), total_reviewed_evidence_count=len(evidence),
+                accepted_evidence_count=accepted, included_prior_evidence_count=included,
+                aggregate_scores=built["aggregate_scores"], clipped_scores=built["clipped_scores"],
                 centered_scores=built["centered_scores"], prior_parameters=built["prior_parameters"],
                 base_prior_summary=before_summary, conversation_prior_summary=informed_summary,
+                initial_profile_summary=self._profile(s), initial_profile_version=s["version"],
+                initial_profile_created_at=created_at,
                 base_prior_distribution=built["base_prior"].tolist(), evidence_posterior_distribution=built["evidence_posterior"].tolist(),
                 conversation_prior_distribution=built["conversation_informed_prior"].tolist(),
                 interviewer_provider=LLM_CONFIG.onboarding_interviewer,
                 interviewer_model=LLM_CONFIG.model if LLM_CONFIG.onboarding_interviewer == "gemini" else "protocol-controller-v1",
                 extractor_provider=extracted.provider, extractor_model=extracted.model,
                 reviewer_provider=reviewed.provider, reviewer_model=reviewed.model,
+                reviewer_taxonomy_version=reviewed.taxonomy_version,
                 prompt_versions={"interviewer": INTERVIEWER_PROMPT, "extractor": EXTRACTOR_PROMPT, "reviewer": REVIEWER_PROMPT})
             return {**self._onboarding_response(s), "assistant_message": "Thanks. We can now begin the scheduling scenarios.",
-                    "accepted_evidence_count": accepted, "profile_status": s["profile_status"],
+                    "accepted_evidence_count": accepted, "included_prior_evidence_count": included,
+                    "profile_status": s["profile_status"], "profile_source": s["profile_source"],
+                    "profile_stage": s["profile_stage"], "initial_profile_version": s["initial_profile_version"],
                     "profile_version": s["version"], "current_profile": self._profile(s)}
         except Exception as exc:
             s["model"].replace_posterior(original); s["onboarding_status"] = "active"; record["status"] = "active"
@@ -242,11 +278,13 @@ class SessionService:
 
     def _use_neutral(self, s: dict, reason: str) -> dict:
         s["onboarding_status"] = "neutral_fallback"; s["prior_status"] = "neutral"; s["round_status"] = "ready"
+        s["profile_status"] = "uninitialized"; s["profile_source"] = "neutral_base"; s["profile_stage"] = "uninitialized"
         if s.get("onboarding") is None:
             s["onboarding"] = {"onboarding_id": f"onboarding_{uuid.uuid4().hex[:12]}", "protocol_id": PROTOCOL["protocol_id"],
                 "protocol_version": PROTOCOL["protocol_version"], "turns": [], "answered_question_ids": [],
                 "skipped_question_ids": [], "followup_ids": [], "current_question_id": None,
-                "participant_saw_prior_information": False}
+                "participant_saw_prior_information": False, "initial_profile_displayed": False,
+                "initial_profile_displayed_at": None, "displayed_profile_version": None}
         s["onboarding"].update(status="neutral_fallback", completed_at=now(), completion_reason=reason,
                                accepted_evidence_count=0, reviewed_evidence=[], current_question_id=None)
         return {**self._onboarding_response(s), "assistant_message": "No problem. We will continue with a neutral starting model."}
@@ -271,6 +309,8 @@ class SessionService:
         s.update(current_round=round_number, active_scenario_id=scenario_id, active_event=event,
                  awaiting_decision=True, awaiting_rationale=False, round_status="awaiting_decision",
                  round_calendar_before=copy.deepcopy(s["calendar"]), round_calendar_adjustments=[])
+        if s["profile_source"] == "onboarding_conversation":
+            s["profile_stage"] = "calendar_updating"
         return {"status": "round_started", "round": round_number, "total_rounds": 15, "event": event,
                 **self.state(sid)}
 
@@ -441,6 +481,7 @@ class SessionService:
         s["round_calendar_adjustments"] = adjustments
         s["decisions"].append(decision); s["evidence_ledger"].append({"type": "calendar_action", **decision})
         self._action_evidence(s, decision, event, features, before, after)
+        s["active_event"] = {**s["active_event"], "committedAction": action}
         s.update(awaiting_decision=False, awaiting_rationale=True, round_status="awaiting_rationale")
         return {**self.state(sid), "decision_id": decision["decision_id"], "ask_rationale": True,
                 "prompt": "What mattered most to you in making that decision?", "action_transition": action_transition}
@@ -486,7 +527,9 @@ class SessionService:
                   "submitted_at": now(), "profile_before": before, "profile_after": after,
                   "rationale_transition": rationale_transition, "round_transition": round_transition, "source_phase": "round"}
         s["rationales"].append(record); s["evidence_ledger"].append({"type": "user_rationale", **record})
-        s["profile_status"] = "initialized"; s["completed_rounds"].append(s["current_round"])
+        s["profile_status"] = "initialized"
+        if s["profile_stage"] == "uninitialized": s["profile_stage"] = "calendar_updating"
+        s["completed_rounds"].append(s["current_round"])
         s.update(awaiting_rationale=False, round_status="complete", active_scenario_id=None, active_event=None)
         return {**self.state(sid), "structured_observation": parsed.observation.model_dump(),
                 "assistant_message": f"Round {decision['round']} is complete. You can start the next round.",
@@ -507,6 +550,27 @@ class SessionService:
         reply = "You can accept, decline, or choose another time. Previewing an option will not change your current profile." if s["awaiting_decision"] else "The round is complete. Start the next round when you are ready."
         s["chat_history"].append({"role": "assistant", "text": reply, "timestamp": now()})
         return {"text": reply, "rationale_recorded": False, **self.state(sid)}
+
+    def initial_profile_viewed(self, sid: str, profile_version: int, displayed_at: str, source: str) -> dict:
+        s = self.get(sid); record = s.get("onboarding")
+        if s["onboarding_status"] != "complete" or s["profile_source"] != "onboarding_conversation" or not record:
+            raise ValueError("A conversation-initial profile is not available")
+        if profile_version != s["initial_profile_version"]:
+            raise ValueError("Displayed profile version does not match the conversation-initial profile")
+        if not record.get("initial_profile_displayed"):
+            record.update(participant_saw_prior_information=True, initial_profile_displayed=True,
+                          initial_profile_displayed_at=displayed_at, displayed_profile_version=profile_version,
+                          initial_profile_display_source=source)
+        return {"initial_profile_displayed": True, "displayed_profile_version": profile_version}
+
+    def profile_interaction(self, sid: str, event_type: str, value_id: str, profile_version: int,
+                            profile_stage: str, round_number: int, timestamp: str, source_phase: str) -> dict:
+        s = self.get(sid)
+        interaction = {"interaction_id": f"profile_interaction_{uuid.uuid4().hex[:12]}", "event_type": event_type,
+                       "value_id": value_id, "profile_version": profile_version, "profile_stage": profile_stage,
+                       "round": round_number, "timestamp": timestamp, "source_phase": source_phase}
+        s["profile_interactions"].append(interaction)
+        return copy.deepcopy(interaction)
 
     def export(self, sid: str) -> dict:
         s = self.get(sid)

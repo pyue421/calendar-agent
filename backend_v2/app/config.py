@@ -36,6 +36,29 @@ class LLMConfig:
 LLM_CONFIG = LLMConfig()
 
 
+class StudyConfigurationError(ValueError):
+    pass
+
+
+STUDY_MODE = os.getenv("STUDY_MODE", "false").lower() in {"1", "true", "yes"}
+
+
+def validate_study_configuration(config: LLMConfig, study_mode: bool = STUDY_MODE) -> bool:
+    if not study_mode:
+        return True
+    roles = {"RATIONALE_PARSER": config.parser, "ONBOARDING_INTERVIEWER": config.onboarding_interviewer,
+             "ONBOARDING_EXTRACTOR": config.onboarding_extractor, "ONBOARDING_REVIEWER": config.onboarding_reviewer}
+    invalid = [name for name, provider in roles.items() if provider != "gemini"]
+    if invalid:
+        raise StudyConfigurationError(f"STUDY_MODE requires Gemini for: {', '.join(invalid)}")
+    if not config.api_key:
+        raise StudyConfigurationError("STUDY_MODE requires GEMINI_API_KEY or GOOGLE_API_KEY")
+    return True
+
+
+RESEARCH_CONFIGURATION_VALID = validate_study_configuration(LLM_CONFIG)
+
+
 @dataclass(frozen=True)
 class OnboardingConfig:
     enabled: bool = os.getenv("ONBOARDING_ENABLED", "true").lower() in {"1", "true", "yes"}
