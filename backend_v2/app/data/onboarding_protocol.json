@@ -1,0 +1,26 @@
+{
+  "protocol_id": "conversational_prior_v1",
+  "protocol_version": "1.0.0",
+  "title": "Conversational prior elicitation",
+  "maximum_participant_turns": 8,
+  "maximum_followups": 2,
+  "minimum_answered_core_questions": 5,
+  "allow_question_skip": true,
+  "allow_neutral_prior_fallback": true,
+  "core_questions": [
+    {"id": "typical_week", "wording": "What does a typical busy week look like for you?"},
+    {"id": "competing_commitments", "wording": "Can you tell me about a recent time when two things competed for the same time? What did you decide to do?"},
+    {"id": "protected_commitments", "wording": "Are there things on your calendar that you try especially hard not to move?"},
+    {"id": "unexpected_requests", "wording": "When someone asks for your time at the last minute, what usually affects whether you say yes?"},
+    {"id": "successful_week", "wording": "What makes a week feel successful or worthwhile to you?"},
+    {"id": "rescheduling_concerns", "wording": "When you have to move or cancel something, what concerns you most?"}
+  ],
+  "approved_followups": [
+    {"id": "ask_for_reason", "wording": "What made that important to you?"},
+    {"id": "ask_about_tradeoff", "wording": "What felt hardest to give up in that situation?"},
+    {"id": "ask_about_stability", "wording": "Is that usually how you handle similar situations?"},
+    {"id": "ask_about_consequence", "wording": "What would have happened if you had chosen differently?"}
+  ],
+  "stopping_rules": {"require_minimum_coverage_for_informed_prior": true, "all_core_questions_are_default_completion": true},
+  "prohibited_topics": ["diagnoses", "religion", "politics", "sexuality", "race", "protected characteristics"]
+}

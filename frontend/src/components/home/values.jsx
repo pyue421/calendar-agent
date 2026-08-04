@@ -1,10 +1,13 @@
 import React, {useState} from "react"
 import {createPortal} from "react-dom"
 import {useSession} from "../../services/SessionContext"
+import {bubbleSize} from "../../services/valueProfile"
+import ValueChangesCard from "./ValueChangesCard"
 import "./values.css"
 
 export default function ValuesPanel() {
-  const {valueWeights = [], previewValueWeights, previewLoading} = useSession()
+  const {valueWeights = [], previewValueWeights, previewLoading, activePreviewTransition,
+    latestActionTransition, latestRoundTransition} = useSession()
   const [activeValueId, setActiveValueId] = useState(null)
   const [showInfo, setShowInfo] = useState(false)
   const displayedProfile = previewValueWeights || valueWeights
@@ -17,16 +20,17 @@ export default function ValuesPanel() {
       {previewing && <span className="values-preview-state">Previewing…</span>}
     </header>
     <div className="value-bubble-wrap">
-      {displayedProfile.length === 0 && <p className="values-empty">Your value profile will begin to appear after your first scheduling decision and reflection.</p>}
+      {displayedProfile.length === 0 && <p className="values-empty">Your value profile will appear after conversational onboarding or your first scheduling decision and reflection.</p>}
       {displayedProfile.map(value => <ValueBubble key={value.id} value={value} onClick={() => setActiveValueId(value.id)}/>)}
     </div>
-    {showInfo && <div className="values-method-note"><p>The system begins from a hidden symmetric mathematical prior; that prior is not shown as your values. Your first committed profile appears after your first action and explanation.</p><p>Decisions and explanations update a Bayesian choice model. Relative bubble size represents the model’s current estimate, not confidence, personality, or objective importance.</p></div>}
+    <ValueChangesCard transition={activePreviewTransition || latestRoundTransition || latestActionTransition}/>
+    {showInfo && <div className="values-method-note"><p>The first profile may be initialized from reviewed conversational scheduling evidence. If conversational personalization is skipped, the symmetric mathematical prior remains hidden until a scheduling decision and reflection.</p><p>Decisions and explanations continue to update the Bayesian choice model. Relative bubble size represents the model’s current estimate, not confidence, personality, or objective importance.</p></div>}
     {activeValueId && createPortal(<ValueEvidenceModal value={committedValue} onClose={() => setActiveValueId(null)}/>, document.body)}
   </section>
 }
 
 function ValueBubble({value, onClick}) {
-  const size = 62 + value.weight * 1.9
+  const size = bubbleSize(value.weight)
   return <button type="button" className={`value-bubble value-bubble-${value.tone}`} style={{width: `${size}px`, height: `${size}px`}} onClick={onClick} aria-label={`View evidence for ${value.label}`}>
     <span>{value.label}</span>
   </button>

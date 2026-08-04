@@ -51,6 +51,20 @@ class GridBayesianValueModel:
     def clone(self) -> "GridBayesianValueModel":
         return GridBayesianValueModel(self.config, self.posterior)
 
+    def base_prior_posterior(self) -> np.ndarray:
+        return self._prior().copy()
+
+    def posterior_copy(self) -> np.ndarray:
+        return self.posterior.copy()
+
+    def replace_posterior(self, posterior: np.ndarray) -> None:
+        candidate = np.asarray(posterior, dtype=np.float64)
+        if candidate.shape != self.posterior.shape or not np.all(np.isfinite(candidate)) or np.any(candidate < 0):
+            raise ValueError("Replacement posterior must be finite, nonnegative, and match the model grid")
+        total = float(candidate.sum())
+        if total <= 0: raise ValueError("Replacement posterior must have positive probability mass")
+        self.posterior = candidate.copy() if np.isclose(total, 1.0) else candidate / total
+
     def observe_action(self, chosen: str, action_features: dict[str, list[float]]) -> None:
         names = list(action_features)
         if chosen not in names:
@@ -92,7 +106,7 @@ class GridBayesianValueModel:
             relative = float(means[i] * 100)
             definition = VALUE_BY_ID[value_id]
             result.append({"id": value_id, "label": definition["label"], "tone": definition["tone"],
-                           "description": definition["description"], "posterior_mean": round(float(means[i]), 6),
+                           "description": definition["description"], "posterior_mean": float(means[i]),
                            "relative_weight": round(relative, 2), "weight": round(relative, 2),
                            "posterior_std": round(variance ** 0.5, 6), "uncertainty": round(variance ** 0.5 * 100, 2),
                            "credible_interval_90": {"lower": round(weighted_quantile(self.grid[:, i], self.posterior, 0.05), 6),

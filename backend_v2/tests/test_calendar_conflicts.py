@@ -25,6 +25,7 @@ def fast_model():
 def active():
     created = client.post("/api/sessions", json={"participant_id": "conflict-test"}).json()
     sid = created["session_id"]
+    client.post(f"/api/sessions/{sid}/onboarding/use-neutral-prior")
     started = client.post(f"/api/sessions/{sid}/events/next").json()
     return sid, started["event"], started
 
@@ -105,7 +106,7 @@ def test_15_generated_conflict_ids_are_not_authoritative():
 
 
 def test_16_infeasible_preview_has_no_profile():
-    sid, event, _ = active(); result = client.post(f"/api/sessions/{sid}/previews", json={"event_id": event["scenario_id"], "action": "accept"}).json(); assert not result["feasible"] and "preview_profile" not in result
+    sid, event, _ = active(); result = client.post(f"/api/sessions/{sid}/previews", json={"event_id": event["scenario_id"], "action": "accept"}).json(); assert not result["feasible"] and "preview_profile" not in result and result["preview_transition"] is None
 
 
 def test_17_preview_uses_calendar_revision():

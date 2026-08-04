@@ -510,3 +510,4 @@
   flex: 1 1 auto;
   min-width: 74px;
 }
+.calendar-onboarding-locked .calendar-event-card { cursor: default !important; }

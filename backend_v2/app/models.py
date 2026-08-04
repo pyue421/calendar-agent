@@ -51,6 +51,40 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
 
+class OnboardingMessageRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+class OnboardingSkipRequest(BaseModel):
+    question_id: str = Field(min_length=1, max_length=100)
+
+
+class OnboardingEvidenceCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    turn_id: str
+    question_id: str
+    exact_quote: str = Field(min_length=1)
+    value_id: str
+    relation: Literal["supports", "challenges"]
+    directness: Literal["explicit", "implicit", "ambiguous"]
+    strength: Literal["weak", "moderate", "strong"]
+    alternative_explanations: list[str] = Field(default_factory=list)
+
+    @field_validator("value_id")
+    @classmethod
+    def onboarding_value_id(cls, value: str) -> str:
+        allowed = {"wellbeing", "achievement_growth", "relationships_care", "autonomy_privacy", "responsibility_fairness"}
+        if value not in allowed: raise ValueError("Unknown onboarding value identifier")
+        return value
+
+
+class OnboardingReview(BaseModel):
+    candidate_index: int = Field(ge=0)
+    review_status: Literal["accepted", "ambiguous", "rejected"]
+    review_reason: str
+    alternative_explanations: list[str] = Field(default_factory=list)
+
+
 class CalendarActionRequest(BaseModel):
     action_type: Literal["reschedule_existing", "remove_existing", "modify_existing"]
     event_id: str

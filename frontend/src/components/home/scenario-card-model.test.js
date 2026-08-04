@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import {readFileSync} from "node:fs"
 import {fileURLToPath} from "node:url"
 import {actionCandidate, canReschedule, candidateEvent, editedSchedule, requestedFields, scheduleConflicts, schedulesEqual, weekDates} from "./scenario-card-model.js"
+import {bubbleSize, normalizeValueProfile, VALUE_IDS} from "../../services/valueProfile.js"
 
 const card = {scenario_id: "s1", title: "Planning", requested_start: "2026-07-20T09:00:00", requested_end: "2026-07-20T10:00:00"}
 const requested = requestedFields(card)
@@ -33,7 +34,7 @@ test("locally invalid drag returns before API invocation", () => { const source 
 test("backend drag rejection rolls back the event", () => { const source = readFileSync(fileURLToPath(new URL("./calendar.jsx", import.meta.url)), "utf8"); assert.match(source, /ev\.id === oldEvent\.id \? oldEvent/) })
 test("successful calendar actions apply authoritative state and revision", () => { const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8"); assert.match(source, /applyState\(data\)/); assert.match(source, /calendarActionLoading/) })
 test("calendar changes clear stale previews", () => { const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8"); assert.match(source, /setPreview\(null\).*applyState\(data\)/s) })
-test("temporary candidates never produce calendar actions", () => { const source = readFileSync(fileURLToPath(new URL("./calendar.jsx", import.meta.url)), "utf8"); assert.match(source, /if \(calEvent\.temporary\) return/); assert.match(source, /oldEvent\.temporary/) })
+test("temporary candidates never produce calendar actions", () => { const source = readFileSync(fileURLToPath(new URL("./calendar.jsx", import.meta.url)), "utf8"); assert.match(source, /calEvent\.temporary\) return/); assert.match(source, /oldEvent\.temporary/) })
 test("non-blocking and boundary-adjacent events do not conflict", () => { assert.equal(scheduleConflicts([{...blocking[0], blocks_time: false}], changed.schedule).length, 0); assert.equal(scheduleConflicts([{...blocking[0], start: changed.schedule.end, end: "2026-07-21T13:00:00"}], changed.schedule).length, 0) })
 
 test("unified profile has no evidence-source toggle", () => {
@@ -46,7 +47,7 @@ test("exactly one committed profile bubble collection is rendered", () => {
   assert.equal((source.match(/className="value-bubble-wrap"/g) || []).length, 1)
 })
 test("conversation and action evidence share one array", () => {
-  const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  const source = readFileSync(fileURLToPath(new URL("../../services/valueProfile.js", import.meta.url)), "utf8")
   assert.match(source, /evidence: value\.evidence/)
   assert.doesNotMatch(source, /calendarEvents: value\.calendar_action_evidence/)
 })
@@ -108,12 +109,134 @@ test("outer bubbles open committed unified evidence without inner bubbles", () =
   assert.match(source, /valueWeights\.find/)
   assert.doesNotMatch(source, /innerSlotPositions|value-bubble-evidence/)
 })
-test("loading a new preview clears old preview sizes", () => {
+test("loading a new preview retains the last valid profile", () => {
   const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
-  assert.match(source, /requestNumber = \+\+previewRequest\.current; setPreview\(null\); setPreviewLoading\(true\)/)
+  assert.match(source, /requestNumber = \+\+previewRequest\.current; setPreviewLoading\(true\)/)
+  assert.doesNotMatch(source, /requestNumber = \+\+previewRequest\.current; setPreview\(null\)/)
 })
 test("preview hover cannot call the decision endpoint", () => {
   const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
   assert.match(source, /session\.loadPreview\(action, candidate, "hover"\)/)
   assert.match(source, /function decide\(action\)[^]*onDecision\(action/s)
+})
+
+const completeProfile = VALUE_IDS.map((id, index) => ({id, label: id, relative_weight: [18, 24, 17, 21, 20][index]}))
+test("complete profiles normalize by semantic ID into one scale", () => {
+  const normalized = normalizeValueProfile([...completeProfile].reverse())
+  assert.deepEqual(normalized.profile.map(value => value.id), VALUE_IDS)
+  assert.equal(normalized.scale, 100)
+})
+test("incomplete previews are rejected", () => assert.equal(normalizeValueProfile(completeProfile.slice(1)), null))
+test("duplicate semantic IDs are rejected", () => assert.equal(normalizeValueProfile([...completeProfile.slice(0, 4), completeProfile[0]]), null))
+test("malformed and negative preview weights are rejected", () => {
+  assert.equal(normalizeValueProfile(completeProfile.map((value, index) => index ? value : {...value, relative_weight: Number.NaN})), null)
+  assert.equal(normalizeValueProfile(completeProfile.map((value, index) => index ? value : {...value, relative_weight: -1})), null)
+})
+test("profile scale mismatch is rejected before rendering", () => {
+  const unitProfile = completeProfile.map(value => ({...value, relative_weight: value.relative_weight / 100}))
+  assert.equal(normalizeValueProfile(unitProfile, 100), null)
+})
+test("one bounded size function serves committed and preview profiles", () => {
+  assert.equal(bubbleSize(20), 100)
+  assert.equal(bubbleSize(-100), 62)
+  assert.equal(bubbleSize(1000), 252)
+})
+test("reschedule debounce retains data and avoids an immediate duplicate request", () => {
+  const source = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
+  assert.match(source, /invalidatePreviewRequests\(\)[^]*setTimeout\([^]*loadPreview\("reschedule"/)
+  assert.match(source, /if \(action !== "reschedule"\) session\.loadPreview/)
+})
+
+test("backend transition card renders five supplied rows and all accessible directions", () => {
+  const source = readFileSync(fileURLToPath(new URL("./ValueChangesCard.jsx", import.meta.url)), "utf8")
+  assert.match(source, /transition\.changes\?\.length !== 5/)
+  assert.match(source, /transition\.changes\.map/)
+  assert.match(source, /Estimated increase/)
+  assert.match(source, /Estimated decrease/)
+  assert.match(source, /No meaningful estimated change/)
+})
+test("transition card uses backend percentage-point deltas without causal explanations", () => {
+  const source = readFileSync(fileURLToPath(new URL("./ValueChangesCard.jsx", import.meta.url)), "utf8")
+  assert.match(source, /change\.delta_percentage_points/)
+  assert.doesNotMatch(source, /changeExplanation|reinforces|shifted weight/)
+})
+test("preview transition is synchronized with the accepted backend preview", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  assert.match(source, /preview\?\.action === activePreviewTarget \? preview\.preview_transition/)
+  assert.match(source, /requestNumber !== previewRequest\.current/)
+})
+test("preview clearing and infeasibility remove the hypothetical transition", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  assert.match(source, /data\.feasible === false[^]*setPreview\(data\)/)
+  assert.match(source, /setActivePreviewTarget\(null\)/)
+})
+test("commits and rationale use backend transition response fields", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  assert.match(source, /data\.action_transition/)
+  assert.match(source, /data\.rationale_transition/)
+  assert.match(source, /data\.round_transition/)
+  assert.doesNotMatch(source, /previewWeightsForAction|DEFAULT_VALUE_WEIGHTS|previewConfirmed/)
+})
+test("hidden-prior transitions and numerical bubble labels are not rendered", () => {
+  const cardSource = readFileSync(fileURLToPath(new URL("./ValueChangesCard.jsx", import.meta.url)), "utf8")
+  const valuesSource = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.match(cardSource, /!transition\?\.display_allowed/)
+  assert.doesNotMatch(valuesSource, /toFixed|delta_percentage_points/)
+})
+test("starting a new round preserves the latest committed transition", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  const startRound = source.match(/async function startRound\(\) \{([^]*?)\n\s{2}\}/)?.[1] || ""
+  assert.doesNotMatch(startRound, /setLatest(?:Action|Rationale|Round)Transition\(null\)/)
+  const values = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.match(values, /activePreviewTransition \|\| latestRoundTransition \|\| latestActionTransition/)
+})
+test("conversational onboarding precedes Round 1 with disclosure and progress", () => {
+  const chat = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
+  assert.match(chat, /onboardingAssistantMessage/)
+  assert.match(chat, /Question.*of/)
+  assert.match(chat, /session\.can_start_round/)
+  assert.match(chat, /onboardingActive/)
+})
+test("onboarding has skip, finish, retry messaging, and neutral controls", () => {
+  const chat = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
+  assert.match(chat, /Skip question/)
+  assert.match(chat, /Finish onboarding/)
+  assert.match(chat, /Continue with a neutral starting model/)
+  assert.match(chat, /You can retry or continue with a neutral model/)
+})
+test("onboarding answers use dedicated APIs rather than rationale chat", () => {
+  const context = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  const chat = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
+  assert.match(context, /onboardingCall\("messages", \{message\}\)/)
+  assert.match(chat, /onboarding_status === "active"[^]*sendOnboardingMessage\(text\)/)
+})
+test("finishing onboarding automatically starts Round 1", () => {
+  const context = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  const chat = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
+  assert.match(context, /finishOnboardingAndStartRound/)
+  assert.match(context, /onboarding\/\$\{path\}[^]*events\/next/)
+  assert.match(context, /data\.can_complete && !data\.question_id/)
+  assert.match(chat, /appendStartedRound/)
+  assert.match(chat, /card: \{\.\.\.round\.event/)
+  assert.doesNotMatch(chat, /\["ready", "complete"\]\.includes\(round_status\)/)
+})
+test("conversation-informed onboarding exposes the committed bubble profile", () => {
+  const values = readFileSync(fileURLToPath(new URL("./values.jsx", import.meta.url)), "utf8")
+  assert.match(values, /initialized from reviewed conversational scheduling evidence/)
+  assert.match(values, /conversational onboarding or your first scheduling decision/)
+})
+test("active onboarding restores by session ID and completed onboarding is not restarted", () => {
+  const context = readFileSync(fileURLToPath(new URL("../../services/SessionContext.jsx", import.meta.url)), "utf8")
+  assert.match(context, /localStorage\.getItem\("calendar_session_id"\)/)
+  assert.match(context, /onboarding_status === "not_started"/)
+  assert.doesNotMatch(context, /onboarding_status === "complete"[^]*onboarding\/start/)
+})
+test("calendar editing is disabled during onboarding", () => {
+  const calendar = readFileSync(fileURLToPath(new URL("./calendar.jsx", import.meta.url)), "utf8")
+  assert.match(calendar, /if \(!can_start_round \|\| calEvent\.temporary\) return/)
+  assert.match(calendar, /aria-disabled={!can_start_round}/)
+})
+test("onboarding never renders inferred profile probabilities", () => {
+  const chat = readFileSync(fileURLToPath(new URL("./ChatbotPanel.jsx", import.meta.url)), "utf8")
+  assert.doesNotMatch(chat, /prior_probability|aggregate_scores|centered_scores|reviewed_evidence/)
 })

@@ -29,7 +29,7 @@ function mapEvent(ev) {
 }
 
 export default function CalendarPanel() {
-  const { calendarEvents, candidateEvent, sendCalendarAction, calendarActionError } = useSession()
+  const { calendarEvents, candidateEvent, sendCalendarAction, calendarActionError, can_start_round } = useSession()
 
   const [weekOffset, setWeekOffset] = useState(0)
   const [events, setEvents] = useState([])
@@ -165,7 +165,7 @@ export default function CalendarPanel() {
   function onEventMouseDown(e, calEvent) {
     e.stopPropagation()
     e.preventDefault()
-    if (calEvent.temporary) return
+    if (!can_start_round || calEvent.temporary) return
     const rect = e.currentTarget.getBoundingClientRect()
     const offsetY = e.clientY - rect.top
     movedRef.current = false
@@ -223,7 +223,7 @@ export default function CalendarPanel() {
 
   return (
     <>
-      <section className="home-calendar-card">
+      <section className={`home-calendar-card${!can_start_round ? " calendar-onboarding-locked" : ""}`} aria-disabled={!can_start_round}>
         {calendarActionError && <div className="calendar-action-error" role="status">{calendarActionError.message || String(calendarActionError)}</div>}
         <header className="calendar-topbar">
           <div className="calendar-top-left">

@@ -29,7 +29,9 @@ def deterministic_test_dependencies():
 def create_session():
     response = client.post("/api/sessions", json={"participant_id": "test"})
     assert response.status_code == 201
-    return response.json()["session_id"], response.json()
+    sid = response.json()["session_id"]
+    assert client.post(f"/api/sessions/{sid}/onboarding/use-neutral-prior").status_code == 200
+    return sid, client.get(f"/api/sessions/{sid}/state").json()
 
 
 def start(sid):

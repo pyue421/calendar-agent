@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .models import CalendarActionRequest, ChatRequest, DecisionRequest, PreviewRequest, RationaleRequest, SessionCreate
+from .models import CalendarActionRequest, ChatRequest, DecisionRequest, OnboardingMessageRequest, OnboardingSkipRequest, PreviewRequest, RationaleRequest, SessionCreate
 from .llm.rationale_parser import RationaleParserConfigurationError, RationaleParserError, RationaleParserUnavailableError
 from .config import LLM_CONFIG
 from .services.session_service import sessions
@@ -35,6 +35,9 @@ def health():
         "rationale_parser": LLM_CONFIG.parser,
         "rationale_model": LLM_CONFIG.model if LLM_CONFIG.parser == "gemini" else None,
         "llm_configured": bool(LLM_CONFIG.api_key) if LLM_CONFIG.parser == "gemini" else True,
+        "onboarding_roles": {"interviewer": LLM_CONFIG.onboarding_interviewer,
+                             "extractor": LLM_CONFIG.onboarding_extractor,
+                             "reviewer": LLM_CONFIG.onboarding_reviewer},
     }
 
 
@@ -44,6 +47,26 @@ def create(body: SessionCreate): return sessions.create(body.participant_id)
 
 @app.get("/api/sessions/{sid}/state")
 def state(sid: str): return call(sessions.state, sid)
+
+
+@app.post("/api/sessions/{sid}/onboarding/start")
+def onboarding_start(sid: str): return call(sessions.start_onboarding, sid)
+
+
+@app.post("/api/sessions/{sid}/onboarding/messages")
+def onboarding_message(sid: str, body: OnboardingMessageRequest): return call(sessions.onboarding_message, sid, body.message)
+
+
+@app.post("/api/sessions/{sid}/onboarding/skip-question")
+def onboarding_skip(sid: str, body: OnboardingSkipRequest): return call(sessions.skip_onboarding_question, sid, body.question_id)
+
+
+@app.post("/api/sessions/{sid}/onboarding/complete")
+def onboarding_complete(sid: str): return call(sessions.complete_onboarding, sid)
+
+
+@app.post("/api/sessions/{sid}/onboarding/use-neutral-prior")
+def onboarding_neutral(sid: str): return call(sessions.use_neutral_prior, sid)
 
 
 @app.post("/api/sessions/{sid}/events/next")

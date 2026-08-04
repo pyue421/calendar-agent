@@ -4,7 +4,7 @@ import copy
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from ..config import CONFIG, LLM_CONFIG, ModelConfig
+from ..config import CONFIG, LLM_CONFIG, ONBOARDING_CONFIG, ModelConfig, OnboardingConfig
 from ..llm.rationale_parser import RationaleParser, build_rationale_parser
 from .bayesian_value_model import GridBayesianValueModel
 from .value_taxonomy import VALUE_IDS, exported_taxonomy, value_palette
@@ -14,6 +14,13 @@ from .calendar_adjustment_service import compound_features, net_adjustments, CON
 from .calendar_service import CalendarProvider, DEFAULT_CALENDAR_PROVIDER, current_week_start
 from .scenario_service import BANK, GENERATOR
 from .event_value_mapper import map_calendar_event
+from .profile_transition_service import compare_profiles
+from .onboarding_protocol_service import PROTOCOL, next_core_question, progress
+from .conversation_prior_service import build_conversation_prior
+from ..llm.onboarding_interviewer import DeterministicOnboardingInterviewer, GeminiOnboardingInterviewer
+from ..llm.onboarding_evidence_extractor import DeterministicOnboardingEvidenceExtractor, GeminiOnboardingEvidenceExtractor, PROMPT_VERSION as EXTRACTOR_PROMPT
+from ..llm.onboarding_evidence_reviewer import DeterministicOnboardingEvidenceReviewer, GeminiOnboardingEvidenceReviewer, PROMPT_VERSION as REVIEWER_PROMPT
+from ..llm.onboarding_interviewer import PROMPT_VERSION as INTERVIEWER_PROMPT
 
 
 def now() -> str:
@@ -22,11 +29,19 @@ def now() -> str:
 
 class SessionService:
     def __init__(self, rationale_parser: RationaleParser | None = None, model_config: ModelConfig = CONFIG,
-                 calendar_provider: CalendarProvider = DEFAULT_CALENDAR_PROVIDER):
+                 calendar_provider: CalendarProvider = DEFAULT_CALENDAR_PROVIDER,
+                 onboarding_config: OnboardingConfig = ONBOARDING_CONFIG, interviewer=None, extractor=None, reviewer=None):
         self.sessions: dict[str, dict] = {}
         self.rationale_parser = rationale_parser or build_rationale_parser(LLM_CONFIG)
         self.model_config = model_config
         self.calendar_provider = calendar_provider
+        self.onboarding_config = onboarding_config
+        role_types = {"deterministic", "gemini"}
+        if {LLM_CONFIG.onboarding_interviewer, LLM_CONFIG.onboarding_extractor, LLM_CONFIG.onboarding_reviewer} - role_types:
+            raise ValueError("Onboarding roles must be 'gemini' or 'deterministic'")
+        self.interviewer = interviewer or (GeminiOnboardingInterviewer(LLM_CONFIG) if LLM_CONFIG.onboarding_interviewer == "gemini" else DeterministicOnboardingInterviewer())
+        self.onboarding_extractor = extractor or (GeminiOnboardingEvidenceExtractor(LLM_CONFIG) if LLM_CONFIG.onboarding_extractor == "gemini" else DeterministicOnboardingEvidenceExtractor())
+        self.onboarding_reviewer = reviewer or (GeminiOnboardingEvidenceReviewer(LLM_CONFIG) if LLM_CONFIG.onboarding_reviewer == "gemini" else DeterministicOnboardingEvidenceReviewer())
 
     def create(self, participant_id: str) -> dict:
         sid = f"session_{uuid.uuid4().hex[:12]}"
@@ -35,13 +50,17 @@ class SessionService:
             "id": sid, "participant_id": participant_id, "version": 0,
             "model": GridBayesianValueModel(self.model_config), "week_start": week_start.isoformat(),
             "calendar": self.calendar_provider.create_calendar(sid, week_start), "created_at": now(),
-            "profile_status": "uninitialized", "current_round": 0, "total_rounds": 15, "round_status": "ready",
+            "profile_status": "uninitialized", "prior_status": "neutral", "current_round": 0, "total_rounds": 15, "round_status": "onboarding",
+            "onboarding_status": "not_started", "onboarding_required": self.onboarding_config.enabled,
+            "onboarding_protocol_version": PROTOCOL["protocol_version"], "onboarding": None,
             "scenario_order": [x["scenario_id"] for x in BANK.scenarios], "active_scenario_id": None,
             "active_event": None, "completed_rounds": [], "awaiting_decision": False, "awaiting_rationale": False,
             "previews": [], "decisions": [], "rationales": [], "value_evidence": [], "evidence_ledger": [], "chat_history": [],
             "calendar_revision": 0, "calendar_actions": [], "calendar_action_attempts": [],
             "round_calendar_before": None, "round_calendar_adjustments": [],
         }
+        if not self.onboarding_config.enabled:
+            self._use_neutral(self.sessions[sid], "research_configuration_disabled")
         return self.state(sid)
 
     def get(self, sid: str) -> dict:
@@ -69,6 +88,13 @@ class SessionService:
         s = self.get(sid)
         conflicts = self._active_request_conflicts(s)
         return {"session_id": sid, "profile_status": s["profile_status"], "profile_version": s["version"],
+                "prior_status": s["prior_status"], "onboarding_status": s["onboarding_status"],
+                "onboarding_required": s["onboarding_required"], "onboarding_protocol_version": s["onboarding_protocol_version"],
+                "onboarding_progress": progress(s["onboarding"]) if s["onboarding"] else None,
+                "onboarding_question_id": s["onboarding"].get("current_question_id") if s["onboarding"] else None,
+                "onboarding_assistant_message": next((turn["message"] for turn in reversed(s["onboarding"].get("turns", [])) if turn["role"] == "assistant"), None) if s["onboarding"] else None,
+                "onboarding_turns": copy.deepcopy(s["onboarding"].get("turns", [])) if s["onboarding_status"] == "active" and s["onboarding"] else None,
+                "can_start_round": s["onboarding_status"] in {"complete", "neutral_fallback"},
                 "current_profile": self._profile(s), "calendar": s["calendar"], "week_start": s["week_start"],
                 "current_round": s["current_round"], "total_rounds": 15, "round_status": s["round_status"],
                 "active_scenario_id": s["active_scenario_id"], "completed_rounds": s["completed_rounds"],
@@ -78,8 +104,162 @@ class SessionService:
                 "value_palette": value_palette(),
                 "pending_decision_id": next((d["decision_id"] for d in reversed(s["decisions"]) if not d["rationale_submitted"]), None)}
 
+    def start_onboarding(self, sid: str) -> dict:
+        s = self.get(sid)
+        if s["onboarding_status"] in {"complete", "neutral_fallback"}:
+            return {**self._onboarding_response(s), "assistant_message": "Onboarding has already been completed."}
+        if s["onboarding_status"] == "active": return self._onboarding_response(s)
+        first = PROTOCOL["core_questions"][0]
+        opened = now()
+        s["onboarding_status"] = "active"; s["round_status"] = "onboarding"
+        s["onboarding"] = {"onboarding_id": f"onboarding_{uuid.uuid4().hex[:12]}",
+            "protocol_id": PROTOCOL["protocol_id"], "protocol_version": PROTOCOL["protocol_version"],
+            "status": "active", "started_at": opened, "completed_at": None, "completion_reason": None,
+            "turns": [{"turn_id": f"onboarding_turn_{uuid.uuid4().hex[:12]}", "role": "assistant",
+                       "question_id": first["id"], "message": first["wording"], "created_at": opened}],
+            "answered_question_ids": [], "skipped_question_ids": [], "followup_ids": [],
+            "followup_question_ids": [], "current_question_id": first["id"], "awaiting_followup": False,
+            "participant_turn_count": 0, "transcript_frozen_at": None, "last_error": None,
+            "participant_saw_prior_information": False}
+        return {**self._onboarding_response(s), "assistant_message": "Before we begin, I’ll ask a few questions about how you usually organize your time. There are no right answers, and you can skip any question.\n\n" + first["wording"]}
+
+    def _onboarding_response(self, s: dict) -> dict:
+        record = s["onboarding"]
+        last_assistant = next((turn["message"] for turn in reversed(record.get("turns", [])) if turn["role"] == "assistant"), None) if record else None
+        return {"onboarding_status": s["onboarding_status"], "onboarding_id": record.get("onboarding_id") if record else None,
+            "prior_status": s["prior_status"], "onboarding_protocol_version": s["onboarding_protocol_version"],
+            "question_id": record.get("current_question_id") if record else None,
+            "progress": progress(record) if record else None,
+            "assistant_message": last_assistant,
+            "can_complete": bool(record and len(record["answered_question_ids"]) >= PROTOCOL["minimum_answered_core_questions"]),
+            "can_start_round": s["onboarding_status"] in {"complete", "neutral_fallback"}}
+
+    def onboarding_message(self, sid: str, message: str) -> dict:
+        s = self.get(sid); record = s["onboarding"]
+        if s["onboarding_status"] != "active" or not record: raise ValueError("Onboarding is not active")
+        if record["current_question_id"] is None: raise ValueError("All onboarding questions are complete; finish onboarding or use the neutral model.")
+        if message.strip().lower() in {"skip", "prefer not to answer"}:
+            return self.skip_onboarding_question(sid, record["current_question_id"])
+        if record["participant_turn_count"] >= min(PROTOCOL["maximum_participant_turns"], self.onboarding_config.maximum_turns):
+            raise ValueError("The onboarding turn limit has been reached; complete onboarding or use the neutral model.")
+        question_id = record["current_question_id"]
+        participant = {"turn_id": f"onboarding_turn_{uuid.uuid4().hex[:12]}", "role": "participant",
+                       "question_id": question_id, "message": message, "created_at": now(),
+                       "is_followup_answer": record["awaiting_followup"]}
+        record["turns"].append(participant); record["participant_turn_count"] += 1
+        if record["awaiting_followup"]:
+            record["awaiting_followup"] = False
+            if question_id not in record["answered_question_ids"]: record["answered_question_ids"].append(question_id)
+            interview = None
+        else:
+            if question_id not in record["answered_question_ids"]: record["answered_question_ids"].append(question_id)
+            remaining = min(PROTOCOL["maximum_followups"], self.onboarding_config.maximum_followups) - len(record["followup_ids"])
+            interview = self.interviewer.respond(message, question_id, remaining)
+        if interview and interview.should_ask_followup and question_id not in record["followup_question_ids"]:
+            followup = next(item for item in PROTOCOL["approved_followups"] if item["id"] == interview.selected_followup_id)
+            record["followup_ids"].append(followup["id"]); record["followup_question_ids"].append(question_id)
+            record["awaiting_followup"] = True; wording = f"{interview.acknowledgement} {followup['wording']}"
+        else:
+            next_question = next_core_question(record)
+            record["current_question_id"] = next_question["id"] if next_question else None
+            wording = ("Thank you. " + next_question["wording"]) if next_question else "Thank you. You can now finish onboarding."
+        assistant = {"turn_id": f"onboarding_turn_{uuid.uuid4().hex[:12]}", "role": "assistant",
+                     "question_id": record["current_question_id"] or question_id, "message": wording, "created_at": now()}
+        record["turns"].append(assistant)
+        return {**self._onboarding_response(s), "assistant_message": wording, "turn_id": participant["turn_id"]}
+
+    def skip_onboarding_question(self, sid: str, question_id: str) -> dict:
+        s = self.get(sid); record = s["onboarding"]
+        if s["onboarding_status"] != "active" or not record or record["current_question_id"] != question_id:
+            raise ValueError("That onboarding question is not currently active")
+        if question_id not in record["skipped_question_ids"]: record["skipped_question_ids"].append(question_id)
+        record["awaiting_followup"] = False
+        next_question = next_core_question(record); record["current_question_id"] = next_question["id"] if next_question else None
+        wording = ("No problem. " + next_question["wording"]) if next_question else "No problem. You can now finish onboarding."
+        record["turns"].append({"turn_id": f"onboarding_turn_{uuid.uuid4().hex[:12]}", "role": "assistant",
+            "question_id": record["current_question_id"], "message": wording, "created_at": now()})
+        return {**self._onboarding_response(s), "assistant_message": wording}
+
+    def complete_onboarding(self, sid: str) -> dict:
+        s = self.get(sid); record = s["onboarding"]
+        if s["onboarding_status"] in {"complete", "neutral_fallback"}: return self._onboarding_response(s)
+        if s["onboarding_status"] != "active" or not record: raise ValueError("Onboarding is not active")
+        if len(record["answered_question_ids"]) < PROTOCOL["minimum_answered_core_questions"]:
+            raise ValueError("Answer at least five core questions, or continue with a neutral starting model.")
+        record["transcript_frozen_at"] = now()
+        s["onboarding_status"] = "extracting"; record["status"] = "extracting"
+        participant_turns = [turn for turn in record["turns"] if turn["role"] == "participant"]
+        original = s["model"].posterior_copy()
+        try:
+            extracted = self.onboarding_extractor.extract(participant_turns)
+            reviewed = self.onboarding_reviewer.review(extracted.evidence, participant_turns)
+            evidence = []
+            for index, candidate in enumerate(extracted.evidence):
+                if candidate.exact_quote not in {turn["message"] for turn in participant_turns}: raise ValueError("Onboarding evidence quote is not grounded in the transcript")
+                review = next(item for item in reviewed.reviews if item.candidate_index == index)
+                evidence.append({"evidence_id": f"onboarding_evidence_{uuid.uuid4().hex[:12]}", **candidate.model_dump(),
+                    "review_status": review.review_status, "review_reason": review.review_reason,
+                    "alternative_explanations": list(dict.fromkeys(candidate.alternative_explanations + review.alternative_explanations)),
+                    "extractor_provider": extracted.provider, "extractor_model": extracted.model,
+                    "reviewer_provider": reviewed.provider, "reviewer_model": reviewed.model, "created_at": now()})
+            accepted = sum(item["review_status"] == "accepted" for item in evidence)
+            if accepted < self.onboarding_config.min_accepted_evidence:
+                s["model"].replace_posterior(original); return self._use_neutral(s, "insufficient_grounded_evidence")
+            built = build_conversation_prior(s["model"], evidence, self.onboarding_config)
+            before_summary = s["model"].summary()
+            informed_model = s["model"].clone(); informed_model.replace_posterior(built["conversation_informed_prior"])
+            informed_summary = informed_model.summary()
+            s["model"].replace_posterior(built["conversation_informed_prior"])
+            s["value_evidence"].extend({
+                "evidence_id": item["evidence_id"], "value_id": item["value_id"],
+                "source_type": "conversation", "source_phase": "onboarding",
+                "exact_text": item["exact_quote"], "directness": item["directness"],
+                "relation": item["relation"], "strength": item["strength"],
+                "review_status": item["review_status"], "created_at": item["created_at"],
+            } for item in evidence if item["review_status"] != "rejected")
+            s["version"] += 1; s["prior_status"] = "conversation_informed"; s["profile_status"] = "initialized"
+            s["onboarding_status"] = "complete"; s["round_status"] = "ready"
+            record.update(status="complete", completed_at=now(), completion_reason="protocol_complete",
+                current_question_id=None,
+                extractor_result=extracted.raw_output, reviewer_result=reviewed.raw_output, reviewed_evidence=evidence,
+                accepted_evidence_count=accepted, aggregate_scores=built["aggregate_scores"], clipped_scores=built["clipped_scores"],
+                centered_scores=built["centered_scores"], prior_parameters=built["prior_parameters"],
+                base_prior_summary=before_summary, conversation_prior_summary=informed_summary,
+                base_prior_distribution=built["base_prior"].tolist(), evidence_posterior_distribution=built["evidence_posterior"].tolist(),
+                conversation_prior_distribution=built["conversation_informed_prior"].tolist(),
+                interviewer_provider=LLM_CONFIG.onboarding_interviewer,
+                interviewer_model=LLM_CONFIG.model if LLM_CONFIG.onboarding_interviewer == "gemini" else "protocol-controller-v1",
+                extractor_provider=extracted.provider, extractor_model=extracted.model,
+                reviewer_provider=reviewed.provider, reviewer_model=reviewed.model,
+                prompt_versions={"interviewer": INTERVIEWER_PROMPT, "extractor": EXTRACTOR_PROMPT, "reviewer": REVIEWER_PROMPT})
+            return {**self._onboarding_response(s), "assistant_message": "Thanks. We can now begin the scheduling scenarios.",
+                    "accepted_evidence_count": accepted, "profile_status": s["profile_status"],
+                    "profile_version": s["version"], "current_profile": self._profile(s)}
+        except Exception as exc:
+            s["model"].replace_posterior(original); s["onboarding_status"] = "active"; record["status"] = "active"
+            record["last_error"] = {"message": str(exc), "retryable": True, "timestamp": now()}
+            raise
+
+    def _use_neutral(self, s: dict, reason: str) -> dict:
+        s["onboarding_status"] = "neutral_fallback"; s["prior_status"] = "neutral"; s["round_status"] = "ready"
+        if s.get("onboarding") is None:
+            s["onboarding"] = {"onboarding_id": f"onboarding_{uuid.uuid4().hex[:12]}", "protocol_id": PROTOCOL["protocol_id"],
+                "protocol_version": PROTOCOL["protocol_version"], "turns": [], "answered_question_ids": [],
+                "skipped_question_ids": [], "followup_ids": [], "current_question_id": None,
+                "participant_saw_prior_information": False}
+        s["onboarding"].update(status="neutral_fallback", completed_at=now(), completion_reason=reason,
+                               accepted_evidence_count=0, reviewed_evidence=[], current_question_id=None)
+        return {**self._onboarding_response(s), "assistant_message": "No problem. We will continue with a neutral starting model."}
+
+    def use_neutral_prior(self, sid: str) -> dict:
+        s = self.get(sid)
+        if s["onboarding_status"] == "complete": return self._onboarding_response(s)
+        return self._use_neutral(s, "participant_selected_neutral_prior")
+
     def next_event(self, sid: str) -> dict:
         s = self.get(sid)
+        if s["onboarding_status"] not in {"complete", "neutral_fallback"}:
+            raise ValueError("Conversational onboarding must be completed or skipped before Round 1.")
         if s["awaiting_decision"] or s["awaiting_rationale"]:
             raise ValueError("The current round must be resolved before starting another")
         if s["current_round"] >= 15:
@@ -117,14 +297,25 @@ class SessionService:
         conflicts = find_conflicts(s["calendar"], schedule["start"], schedule["end"]) if schedule else []
         if conflicts:
             return {"feasible": False, "reason": "calendar_conflict", "conflicts": conflicts,
-                    "calendar_revision": s["calendar_revision"], "event_id": event_id, "action": action}
+                    "calendar_revision": s["calendar_revision"], "event_id": event_id, "action": action,
+                    "preview_transition": None}
         adjustments = net_adjustments(s["round_calendar_before"] or s["calendar"], s["calendar"])
         features = compound_features(action_features(scenario, candidate), action, adjustments)
+        before = s["model"].summary()
         hypothetical = s["model"].clone()
         hypothetical.observe_action(action, features)
-        record = {"preview_id": f"preview_{uuid.uuid4().hex[:12]}", "event_id": event_id,
+        preview_profile = hypothetical.summary()
+        preview_timestamp = now()
+        preview_id = f"preview_{uuid.uuid4().hex[:12]}"
+        transition = compare_profiles(before, preview_profile, stage="preview", hypothetical=True,
+            profile_version_before=s["version"], profile_version_after=None,
+            display_allowed=s["profile_status"] == "initialized", action=action, round=s["current_round"],
+            scenario_id=s["active_scenario_id"], preview_id=preview_id,
+            calendar_revision=s["calendar_revision"], timestamp=preview_timestamp)
+        record = {"preview_id": preview_id, "event_id": event_id,
                   "scenario_id": s["active_scenario_id"], "round": s["current_round"], "action": action,
-                  "candidate_schedule": candidate, "preview_profile": hypothetical.summary(), "display_timestamp": now(),
+                  "candidate_schedule": candidate, "preview_profile": preview_profile, "preview_transition": transition,
+                  "display_timestamp": preview_timestamp,
                   "display_state": display_state, "preview_order": len(s["previews"]) + 1,
                   "viewing_duration_ms": None, "base_profile_version": s["version"],
                   "calendar_revision": s["calendar_revision"], "feasible": True, "calendar_adjustments": adjustments}
@@ -141,6 +332,8 @@ class SessionService:
     def calendar_action(self, sid: str, action_type: str, event_id: str, new_schedule: dict | None,
                         changes: dict | None, source: str) -> dict:
         s = self.get(sid)
+        if s["onboarding_status"] not in {"complete", "neutral_fallback"}:
+            raise ValueError("Calendar editing is disabled during conversational onboarding")
         index = next((i for i, item in enumerate(s["calendar"]) if item["id"] == event_id), None)
         if index is None:
             raise ValueError("Calendar event not found")
@@ -222,6 +415,8 @@ class SessionService:
             raise CalendarConflictError(conflicts)
         adjustments = net_adjustments(s["round_calendar_before"] or s["calendar"], s["calendar"])
         features = compound_features(action_features(scenario, candidate), action, adjustments)
+        version_before = s["version"]
+        display_allowed = s["profile_status"] == "initialized"
         before = s["model"].summary(); s["model"].observe_action(action, features); after = s["model"].summary()
         if action in ("accept", "reschedule"):
             s["calendar"].append(map_calendar_event({
@@ -230,10 +425,16 @@ class SessionService:
                 "event_value_id": event["event_value_id"],
             }))
         s["version"] += 1
-        decision = {"decision_id": f"decision_{uuid.uuid4().hex[:12]}", "event_id": event_id,
+        decision_id = f"decision_{uuid.uuid4().hex[:12]}"
+        action_transition = compare_profiles(before, after, stage="action_commit", hypothetical=False,
+            profile_version_before=version_before, profile_version_after=s["version"], display_allowed=display_allowed,
+            action=action, round=s["current_round"], scenario_id=s["active_scenario_id"], decision_id=decision_id,
+            calendar_revision=s["calendar_revision"], timestamp=now())
+        decision = {"decision_id": decision_id, "event_id": event_id,
                     "scenario_id": s["active_scenario_id"], "round": s["current_round"], "action": action,
                     "candidate_schedule": candidate, "committed_at": now(), "profile_before": before,
-                    "profile_after_action": after, "action_features": features, "rationale_submitted": False, "source_phase": "round",
+                    "profile_after_action": after, "action_transition": action_transition,
+                    "action_features": features, "rationale_submitted": False, "source_phase": "round",
                     "round_calendar_adjustments": adjustments,
                     "compound_plan": {"incoming_request_action": action, "incoming_request_schedule": schedule,
                                       "calendar_adjustments": adjustments, "final_calendar_outcome": copy.deepcopy(s["calendar"])}}
@@ -242,7 +443,7 @@ class SessionService:
         self._action_evidence(s, decision, event, features, before, after)
         s.update(awaiting_decision=False, awaiting_rationale=True, round_status="awaiting_rationale")
         return {**self.state(sid), "decision_id": decision["decision_id"], "ask_rationale": True,
-                "prompt": "What mattered most to you in making that decision?"}
+                "prompt": "What mattered most to you in making that decision?", "action_transition": action_transition}
 
     def rationale(self, sid: str, decision_id: str, text: str) -> dict:
         s = self.get(sid)
@@ -254,6 +455,7 @@ class SessionService:
         parsed = self.rationale_parser.parse(text, {"action": decision["action"], "candidate_schedule": decision["candidate_schedule"],
                                                    "compound_plan": decision["compound_plan"],
                                                    "round_calendar_adjustments": decision["round_calendar_adjustments"]})
+        version_before = s["version"]
         before = s["model"].summary()
         explicit, implicit = parsed.observation.explicit_value_references, parsed.observation.implicit_value_references
         s["model"].observe_values(explicit + implicit, self.model_config.rationale_reliability)
@@ -269,22 +471,39 @@ class SessionService:
                 "posterior_before": before_map[value_id]["posterior_mean"], "posterior_after": after_map[value_id]["posterior_mean"],
                 "posterior_delta": round(delta, 6), "created_at": now()})
         s["version"] += 1; decision["rationale_submitted"] = True
+        display_allowed = decision["action_transition"]["display_allowed"]
+        rationale_transition = compare_profiles(before, after, stage="rationale", hypothetical=False,
+            profile_version_before=version_before, profile_version_after=s["version"], display_allowed=display_allowed,
+            action=decision["action"], round=decision["round"], scenario_id=decision["scenario_id"],
+            decision_id=decision_id, calendar_revision=s["calendar_revision"], timestamp=now())
+        round_transition = compare_profiles(decision["profile_before"], after, stage="round_complete", hypothetical=False,
+            profile_version_before=decision["action_transition"]["profile_version_before"],
+            profile_version_after=s["version"], display_allowed=display_allowed, action=decision["action"],
+            round=decision["round"], scenario_id=decision["scenario_id"], decision_id=decision_id,
+            calendar_revision=s["calendar_revision"], timestamp=now())
         record = {"decision_id": decision_id, "scenario_id": decision["scenario_id"], "round": decision["round"], "text": text,
                   "structured_observation": parsed.observation.model_dump(), "parser": {"provider": parsed.provider, "model": parsed.model},
-                  "submitted_at": now(), "profile_before": before, "profile_after": after, "source_phase": "round"}
+                  "submitted_at": now(), "profile_before": before, "profile_after": after,
+                  "rationale_transition": rationale_transition, "round_transition": round_transition, "source_phase": "round"}
         s["rationales"].append(record); s["evidence_ledger"].append({"type": "user_rationale", **record})
         s["profile_status"] = "initialized"; s["completed_rounds"].append(s["current_round"])
         s.update(awaiting_rationale=False, round_status="complete", active_scenario_id=None, active_event=None)
         return {**self.state(sid), "structured_observation": parsed.observation.model_dump(),
-                "assistant_message": f"Round {decision['round']} is complete. You can start the next round."}
+                "assistant_message": f"Round {decision['round']} is complete. You can start the next round.",
+                "rationale_transition": rationale_transition, "round_transition": round_transition}
 
     def chat(self, sid: str, message: str) -> dict:
-        s = self.get(sid); s["chat_history"].append({"role": "user", "text": message, "timestamp": now()})
+        s = self.get(sid)
+        if s["onboarding_status"] not in {"complete", "neutral_fallback"}:
+            raise ValueError("Use the dedicated onboarding message endpoint during conversational onboarding")
+        s["chat_history"].append({"role": "user", "text": message, "timestamp": now()})
         if s["awaiting_rationale"]:
             decision_id = next(d["decision_id"] for d in reversed(s["decisions"]) if not d["rationale_submitted"])
             result = self.rationale(sid, decision_id, message); reply = result["assistant_message"]
             s["chat_history"].append({"role": "assistant", "text": reply, "timestamp": now()})
-            return {"text": reply, "rationale_recorded": True, **self.state(sid)}
+            return {"text": reply, "rationale_recorded": True,
+                    "rationale_transition": result["rationale_transition"], "round_transition": result["round_transition"],
+                    **self.state(sid)}
         reply = "You can accept, decline, or choose another time. Previewing an option will not change your current profile." if s["awaiting_decision"] else "The round is complete. Start the next round when you are ready."
         s["chat_history"].append({"role": "assistant", "text": reply, "timestamp": now()})
         return {"text": reply, "rationale_recorded": False, **self.state(sid)}

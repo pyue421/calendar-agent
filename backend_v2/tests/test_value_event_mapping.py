@@ -11,6 +11,7 @@ from app.services.event_value_mapper import event_value_mapping
 from app.services.scenario_service import BANK, GENERATOR
 from app.services.session_service import sessions
 from app.services.value_taxonomy import VALUE_BY_ID, VALUE_DEFINITIONS, VALUE_IDS
+from app.services.profile_transition_service import compare_profiles
 
 client = TestClient(app)
 
@@ -27,6 +28,7 @@ def fast_model():
 def active():
     created = client.post("/api/sessions", json={"participant_id": "mapping-test"}).json()
     sid = created["session_id"]
+    client.post(f"/api/sessions/{sid}/onboarding/use-neutral-prior")
     started = client.post(f"/api/sessions/{sid}/events/next").json()
     return sid, created, started["event"]
 
@@ -126,3 +128,55 @@ def test_export_contains_taxonomy_and_event_mappings():
     assert exported["value_taxonomy"][1]["display_label"] == "Achievement"
     assert exported["value_palette"]["wellbeing"]["tone"] == "green"
     assert all("value_mapping" in event for event in exported["calendar"])
+
+
+def transition_profile(weights):
+    return [{"id": value_id, "posterior_mean": weight} for value_id, weight in zip(VALUE_IDS, weights)]
+
+
+def test_profile_comparison_is_semantic_complete_and_precise():
+    before = transition_profile([.2] * 5)
+    after = transition_profile([.21, .19, .2, .2001, .1999])
+    transition = compare_profiles(list(reversed(before)), after, stage="preview", hypothetical=True,
+                                  profile_version_before=2)
+    assert [item["value_id"] for item in transition["changes"]] == list(VALUE_IDS)
+    assert len(transition["changes"]) == 5
+    assert transition["changes"][0]["delta"] == pytest.approx(.01)
+    assert transition["changes"][0]["delta_percentage_points"] == pytest.approx(1.0)
+    assert transition["changes"][3]["direction"] == "negligible"
+
+
+def test_profile_comparison_rejects_missing_duplicate_and_malformed_values():
+    profile = transition_profile([.2] * 5)
+    with pytest.raises(ValueError): compare_profiles(profile[:-1], profile, stage="preview", hypothetical=True, profile_version_before=0)
+    with pytest.raises(ValueError): compare_profiles([*profile[:-1], profile[0]], profile, stage="preview", hypothetical=True, profile_version_before=0)
+    malformed = copy.deepcopy(profile); malformed[0]["posterior_mean"] = float("nan")
+    with pytest.raises(ValueError): compare_profiles(malformed, profile, stage="preview", hypothetical=True, profile_version_before=0)
+
+
+def test_preview_and_committed_transitions_use_authoritative_profiles():
+    sid, _, event = active()
+    state = sessions.get(sid)
+    posterior_before = state["model"].posterior.copy()
+    preview = client.post(f"/api/sessions/{sid}/previews", json={"event_id": event["scenario_id"], "action": "decline", "display_state": "hover"}).json()
+    assert preview["preview_transition"]["stage"] == "preview"
+    assert preview["preview_transition"]["display_allowed"] is False
+    assert preview["preview_transition"]["suppression_reason"] == "profile_not_initialized"
+    preview_after = {item["id"]: item["posterior_mean"] for item in preview["preview_profile"]}
+    assert all(change["after"] == preview_after[change["value_id"]] for change in preview["preview_transition"]["changes"])
+    assert np.array_equal(posterior_before, state["model"].posterior)
+
+    decision = client.post(f"/api/sessions/{sid}/decisions", json={"event_id": event["scenario_id"], "action": "decline"}).json()
+    assert decision["action_transition"]["stage"] == "action_commit"
+    assert decision["action_transition"]["display_allowed"] is False
+    completed = client.post(f"/api/sessions/{sid}/chat", json={"message": "I needed time to rest."}).json()
+    assert completed["rationale_transition"]["stage"] == "rationale"
+    assert completed["round_transition"]["stage"] == "round_complete"
+    assert completed["round_transition"]["display_allowed"] is False
+    exported = client.get(f"/api/sessions/{sid}/export").json()
+    assert exported["decisions"][0]["action_transition"]["changes"]
+    assert exported["rationales"][0]["round_transition"]["changes"]
+    assert "action_features" not in decision["action_transition"]
+    second = client.post(f"/api/sessions/{sid}/events/next").json()["event"]
+    second_preview = client.post(f"/api/sessions/{sid}/previews", json={"event_id": second["scenario_id"], "action": "decline", "display_state": "hover"}).json()
+    assert second_preview["preview_transition"]["display_allowed"] is True
