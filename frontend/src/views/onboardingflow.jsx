@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { motion } from "framer-motion"
 import "./onboarding-shared.css"
 import "./onboarding-mandatory.css"
 
@@ -41,6 +40,7 @@ export default function OnboardingFlow() {
     try {
       const saved = JSON.parse(raw)
       const nextStep = Number.isFinite(saved?.step) ? Math.max(0, Math.min(2, saved.step)) : 0
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState((s) => ({ ...s, ...saved, step: nextStep }))
     } catch {
       // ignore

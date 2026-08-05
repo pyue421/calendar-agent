@@ -1,5 +1,5 @@
 .chatbot-panel {
-  width: 384px;
+  width: 320px;
   flex: 0 0 384px;
   background: #f8f9fa;
   border-right: 1px solid #dee5eb;
@@ -7,6 +7,22 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+}
+
+/* Narrow the chatbot column on larger screens so the calendar gets the
+   extra room instead of just growing the side columns proportionally. */
+@media (min-width: 1024px) {
+  .chatbot-panel {
+    width: 340px;
+    flex-basis: 340px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .chatbot-panel {
+    width: 320px;
+    flex-basis: 320px;
+  }
 }
 
 .chatbot-header {
@@ -32,40 +48,6 @@
 .chatbot-header-title {
   font-size: 12px;
   font-weight: 600;
-  color: #25252a;
-}
-
-.chatbot-mode-group {
-  display: flex;
-  align-items: center;
-  background: #ebf0f5;
-  border-radius: 20px;
-  padding: 4px;
-  height: 32px;
-  gap: 0;
-}
-
-.chatbot-mode-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 24px;
-  border-radius: 20px;
-  border: none;
-  background: transparent;
-  color: #5d666f;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.chatbot-mode-btn svg {
-  width: 16px;
-  height: 16px;
-}
-
-.chatbot-mode-btn.active {
-  background: white;
   color: #25252a;
 }
 
@@ -185,6 +167,67 @@
   border-color: #3f5bff;
 }
 
+.meeting-field-input:disabled {
+  background: #f1f3f5;
+  color: #8a8f98;
+  cursor: not-allowed;
+}
+
+.meeting-field-select {
+  appearance: none;
+  cursor: pointer;
+}
+
+.meeting-field-row {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+}
+
+.meeting-field-date {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.meeting-field-date .meeting-field-input {
+  width: auto;
+  min-width: 88px;
+  padding: 0 10px;
+}
+
+.meeting-field-row .meeting-field:last-child {
+  flex: 1 0 0;
+  min-width: 0;
+}
+
+.meeting-time-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.meeting-time-range .meeting-field-input {
+  flex: 1 0 0;
+  min-width: 0;
+}
+
+.meeting-time-range input[type="time"]::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+/* Tighten the native gap between the minute field and AM/PM */
+.meeting-time-range input[type="time"]::-webkit-datetime-edit-text,
+.meeting-time-range input[type="time"]::-webkit-datetime-edit-ampm-field {
+  padding: 0;
+  margin: 0;
+}
+
+.meeting-time-sep {
+  color: #5d666f;
+  flex-shrink: 0;
+}
+
 .meeting-confirm-btn {
   height: 22px;
   padding: 0 6px;
@@ -206,6 +249,61 @@
 
 .meeting-confirm-btn.confirmed {
   background: #16a34a;
+}
+
+.meeting-decision-row {
+  display: flex;
+  gap: 6px;
+}
+
+.meeting-reject-btn {
+  height: 22px;
+  padding: 0 6px;
+  background: white;
+  color: #25252a;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid #dee5eb;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.meeting-reject-btn:hover {
+  background: #f8f9fa;
+}
+
+.meeting-reject-btn.decided {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.meeting-accept-btn {
+  height: 22px;
+  padding: 0 6px;
+  background: #3f5bff;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.meeting-accept-btn:hover {
+  background: #2d47e0;
+}
+
+.meeting-accept-btn.decided {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
 }
 
 /* Input area */
@@ -273,3 +371,70 @@
   width: 12px;
   height: 12px;
 }
+
+.meeting-reschedule-btn {
+  height: 22px;
+  padding: 0 6px;
+  background: white;
+  color: #3048c9;
+  font: 600 12px inherit;
+  border: 1px solid #91a0ed;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.meeting-decision-row button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.meeting-schedule-error {
+  width: 100%;
+  margin: -5px 0 0;
+  color: #9b2c2c;
+  font-size: 11px;
+}
+
+.reflection-panel { min-width: 330px; }
+.reflection-content { padding: 20px; overflow-y: auto; color: #34343b; }
+.reflection-content h3 { margin: 6px 0 10px; font-size: 18px; }
+.reflection-eyebrow { margin: 0 0 4px; color: #5562d9; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.decision-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
+.decision-option { display: grid; gap: 6px; }
+.preview-button { padding: 7px 10px; border: 1px solid #ccd3dc; border-radius: 6px; background: white; cursor: pointer; }
+.reschedule-box { display: grid; gap: 9px; padding: 14px; border: 1px solid #dfe3ea; border-radius: 10px; background: #fafbfc; }
+.reschedule-box input, .rationale-form textarea { padding: 9px; border: 1px solid #ccd3dc; border-radius: 6px; font: inherit; }
+.reschedule-actions { display: flex; gap: 8px; }
+.rationale-form { display: grid; gap: 10px; }
+.reflection-error { margin: 0; padding: 8px; border-radius: 6px; color: #8f1d1d; background: #fff0f0; font-size: 12px; }
+
+.chatbot-round-label { font-size: 11px; opacity: .62; margin-left: 8px; font-weight: 400; }
+.chatbot-message-meta { font-size: 11px; color: #7c7c8a; margin-bottom: 4px; }
+.chatbot-thinking { opacity: .5; }
+.round-controls { display: flex; justify-content: center; padding: 0 12px 6px; }
+.scenario-decision-card .meeting-card-body { align-items: stretch; }
+.decision-recorded { color: #2f6f44; font-weight: 600; font-size: 12px; }
+.meeting-action-target { display: inline-flex; }
+.availability-popover { position: fixed; z-index: 1200; width: 300px; padding: 12px; border: 1px solid #ef9a9a; border-radius: 10px; background: #fff8f8; box-shadow: 0 12px 30px rgba(25,31,42,.18); color: #552121; }
+.availability-popover p { margin: 6px 0; font-size: 12px; line-height: 1.4; }
+.availability-popover small { color: #765050; }
+
+/* Backend-provided changes in estimated scheduling priority. */
+.value-changes-card { flex: 0 0 auto; margin-top: 10px; }
+.value-change-preview-label { margin-left: auto; color: #727985; font-size: 10px; }
+.value-changes-body { gap: 6px; align-items: flex-start; }
+.value-change-item { width: 100%; }
+.value-change-line { display: flex; align-items: center; gap: 4px; width: 100%; margin: 0; padding: 2px 0; font-size: 12px; font-weight: 500; font-family: inherit; color: #25252a; text-align: left; background: none; border: none; }
+.value-change-toggle { cursor: pointer; }
+.value-change-arrow { flex-shrink: 0; font-size: 10px; color: #8a8f98; }
+.value-change-arrow.increase { color: #16a34a; }
+.value-change-arrow.decrease { color: #dc2626; }
+.value-change-arrow.negligible { color: #8a8f98; }
+.value-change-chevron { margin-left: auto; color: #8a8f98; font-size: 11px; transition: transform 0.15s ease; }
+.value-change-chevron.open { transform: rotate(90deg); }
+.value-change-detail { margin: 2px 0 4px 18px; padding-left: 8px; border-left: 2px solid #dee5eb; font-size: 11px; line-height: 1.5; color: #5d666f; }
+.value-change-detail p { margin: 0 0 2px; }
+.onboarding-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.onboarding-controls button { border: 1px solid #d8dee6; border-radius: 6px; background: white; padding: 5px 8px; color: #3f4650; font: inherit; font-size: 11px; cursor: pointer; }
+.onboarding-controls button:disabled { cursor: not-allowed; opacity: .5; }
+.onboarding-error { margin: 0 0 8px; color: #a33a3a; font-size: 11px; line-height: 1.4; }

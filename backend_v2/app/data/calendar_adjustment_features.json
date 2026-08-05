@@ -1,0 +1,15 @@
+{
+  "category_vectors": {
+    "focus": {"wellbeing": -0.1, "achievement_growth": -0.5, "relationships_care": 0.0, "autonomy_privacy": -0.4, "responsibility_fairness": 0.0},
+    "wellbeing": {"wellbeing": -0.8, "achievement_growth": 0.0, "relationships_care": 0.0, "autonomy_privacy": -0.2, "responsibility_fairness": 0.0},
+    "relationships": {"wellbeing": 0.0, "achievement_growth": 0.0, "relationships_care": -0.8, "autonomy_privacy": 0.0, "responsibility_fairness": -0.2},
+    "learning": {"wellbeing": 0.0, "achievement_growth": -0.7, "relationships_care": 0.0, "autonomy_privacy": -0.1, "responsibility_fairness": 0.0},
+    "meeting": {"wellbeing": 0.0, "achievement_growth": 0.0, "relationships_care": -0.2, "autonomy_privacy": 0.0, "responsibility_fairness": -0.5},
+    "work": {"wellbeing": 0.0, "achievement_growth": -0.4, "relationships_care": 0.0, "autonomy_privacy": 0.0, "responsibility_fairness": -0.5},
+    "personal": {"wellbeing": -0.2, "achievement_growth": 0.0, "relationships_care": 0.0, "autonomy_privacy": -0.6, "responsibility_fairness": 0.0}
+  },
+  "protected_multiplier": 1.25,
+  "removed_multiplier": 1.0,
+  "rescheduled_multiplier": 0.5,
+  "combination": "add adjustment vector to selected incoming-action vector, then clip each dimension to [-1, 1]"
+}

@@ -1,24 +1,53 @@
 import React, { useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
+import { useSession } from "../../services/SessionContext"
 import "./calendar.css"
+import "./chatbot.css" // shared meeting-field/button styles for the event detail modal
 
 const ROW_HEIGHT = 64
 const HOURS = Array.from({ length: 24 }, (_, idx) => idx)
 const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
-const INITIAL_EVENTS = [
-  { id: "e1", title: "Team Meeting", dayIndex: 0, start: "09:00", end: "10:30", tone: "purple" },
-  { id: "e2", title: "Aviation Practice", dayIndex: 1, start: "11:00", end: "12:30", tone: "blue" },
-  { id: "e3", title: "Activity", dayIndex: 2, start: "12:00", end: "13:30", tone: "purple" },
-  { id: "e4", title: "Aviation Practice", dayIndex: 4, start: "09:00", end: "10:30", tone: "blue" },
-]
+// Map backend snake_case event to frontend camelCase
+function mapEvent(ev) {
+  const isoStart = ev.start?.includes("T") ? new Date(ev.start) : null
+  const isoEnd = ev.end?.includes("T") ? new Date(ev.end) : null
+  return {
+    id: ev.id,
+    title: ev.title,
+    dayIndex: ev.day_index ?? ev.dayIndex ?? (isoStart ? Math.max(0, Math.min(4, (isoStart.getDay() + 6) % 7)) : 0),
+    start: isoStart ? isoStart.toTimeString().slice(0, 5) : ev.start,
+    end: isoEnd ? isoEnd.toTimeString().slice(0, 5) : ev.end,
+    tone: ev.value_mapping?.tone ?? ev.value_tone ?? "neutral",
+    category: ev.category || "work",
+    isNew: ev.is_new ?? ev.isNew ?? false,
+    metadata: ev.metadata || {},
+    blocksTime: ev.blocks_time !== false,
+    temporary: Boolean(ev.temporary),
+    invalid: Boolean(ev.invalid),
+  }
+}
 
 export default function CalendarPanel() {
+  const { calendarEvents, candidateEvent, sendCalendarAction, calendarActionError, can_start_round } = useSession()
+
   const [weekOffset, setWeekOffset] = useState(0)
-  const [events, setEvents] = useState(INITIAL_EVENTS)
+  const [events, setEvents] = useState([])
   const [dragging, setDragging] = useState(null)
+  const [dragPreview, setDragPreview] = useState(null)
+  const [selectedEvent, setSelectedEvent] = useState(null)
   const scrollerRef = useRef(null)
   const daysColumnsRef = useRef(null)
-  const ghostRef = useRef(null)
+  const dragPreviewRef = useRef(null)
+  const movedRef = useRef(false)
+  const downPosRef = useRef({ x: 0, y: 0 })
+
+  // Sync events from session context
+  useEffect(() => {
+    // Calendar interactions keep a local working copy; context changes are its external reset signal.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEvents([...(calendarEvents || []), ...(candidateEvent ? [candidateEvent] : [])].map(mapEvent))
+  }, [calendarEvents, candidateEvent])
 
   const weekStart = useMemo(() => {
     const base = startOfWeekMonday(new Date())
@@ -39,33 +68,85 @@ export default function CalendarPanel() {
   useEffect(() => {
     if (!dragging) return
 
+    const duration = toMinutes(dragging.event.end) - toMinutes(dragging.event.start)
+
+    function computeSnappedSlot(e) {
+      if (!daysColumnsRef.current) return null
+      const colsRect = daysColumnsRef.current.getBoundingClientRect()
+      // colsRect.top is live viewport-relative and already reflects the
+      // current scroll position of .calendar-scroll, so no extra scrollTop
+      // adjustment is needed here.
+      const relX = e.clientX - colsRect.left
+      const relY = e.clientY - colsRect.top - dragging.offsetY
+      const colWidth = colsRect.width / 5
+      const dayIndex = Math.max(0, Math.min(4, Math.floor(relX / colWidth)))
+      const rawStartMinute = Math.round((relY / ROW_HEIGHT) * 60)
+      // Snap to the nearest 15-minute mark, like Google Calendar
+      let startMinute = Math.round(rawStartMinute / 15) * 15
+      startMinute = Math.max(0, Math.min(startMinute, 24 * 60 - duration))
+      const endMinute = startMinute + duration
+      const conflicts = findLocalConflicts(events, dragging.event.id, dayIndex, minutesToTime(startMinute), minutesToTime(endMinute))
+      return { dayIndex, startMinute, endMinute, conflicts }
+    }
+
+    const CLICK_MOVE_THRESHOLD = 4 // px — below this, treat mouseup as a click, not a drag
+
     function onMouseMove(e) {
-      if (ghostRef.current) {
-        ghostRef.current.style.left = `${e.clientX - 60}px`
-        ghostRef.current.style.top = `${e.clientY - dragging.offsetY}px`
+      if (
+        !movedRef.current &&
+        (Math.abs(e.clientX - downPosRef.current.x) > CLICK_MOVE_THRESHOLD ||
+          Math.abs(e.clientY - downPosRef.current.y) > CLICK_MOVE_THRESHOLD)
+      ) {
+        movedRef.current = true
+      }
+      const slot = computeSnappedSlot(e)
+      if (slot) {
+        dragPreviewRef.current = slot
+        setDragPreview(slot)
       }
     }
 
     function onMouseUp(e) {
-      if (daysColumnsRef.current && scrollerRef.current) {
-        const colsRect = daysColumnsRef.current.getBoundingClientRect()
-        const scrollTop = scrollerRef.current.scrollTop
-        const relX = e.clientX - colsRect.left
-        const relY = e.clientY - colsRect.top + scrollTop - dragging.offsetY
-        const colWidth = colsRect.width / 5
-        const dayIndex = Math.max(0, Math.min(4, Math.floor(relX / colWidth)))
-        const rawStartMinute = Math.round((relY / ROW_HEIGHT) * 60)
-        const startMinute = Math.max(0, Math.round(rawStartMinute / 15) * 15)
-        const duration = toMinutes(dragging.event.end) - toMinutes(dragging.event.start)
-        const endMinute = Math.min(startMinute + duration, 24 * 60)
+      if (!movedRef.current) {
+        // Treated as a click, not a drag — toggle the event detail modal
+        const clicked = dragging.event
+        setSelectedEvent((cur) =>
+          cur && cur.event.id === clicked.id ? null : { event: clicked, rect: dragging.rect }
+        )
+        dragPreviewRef.current = null
+        setDragPreview(null)
+        setDragging(null)
+        return
+      }
+
+      const slot = computeSnappedSlot(e) || dragPreviewRef.current
+      if (slot) {
+        const newStart = minutesToTime(slot.startMinute)
+        const newEnd = minutesToTime(slot.endMinute)
+        const oldEvent = dragging.event
+
+        if (oldEvent.temporary || slot.conflicts.length) {
+          dragPreviewRef.current = null; setDragPreview(null); setDragging(null); return
+        }
+
+        // Update local state immediately
         setEvents((evs) =>
           evs.map((ev) =>
-            ev.id === dragging.event.id
-              ? { ...ev, dayIndex, start: minutesToTime(startMinute), end: minutesToTime(endMinute) }
+            ev.id === oldEvent.id
+              ? { ...ev, dayIndex: slot.dayIndex, start: newStart, end: newEnd }
               : ev
           )
         )
+
+        // Log behavioral signal to backend
+        if (sendCalendarAction) {
+          sendCalendarAction({action_type: "reschedule_existing", event_id: oldEvent.id,
+            new_schedule: slotSchedule(visibleDays, slot.dayIndex, newStart, newEnd), source: "calendar_drag"})
+            .catch((err) => { setEvents(evs => evs.map(ev => ev.id === oldEvent.id ? oldEvent : ev)); console.error("Failed to move calendar event:", err) })
+        }
       }
+      dragPreviewRef.current = null
+      setDragPreview(null)
       setDragging(null)
     }
 
@@ -79,14 +160,58 @@ export default function CalendarPanel() {
       window.removeEventListener("mousemove", onMouseMove)
       window.removeEventListener("mouseup", onMouseUp)
     }
-  }, [dragging])
+  }, [dragging, events, sendCalendarAction, visibleDays])
 
   function onEventMouseDown(e, calEvent) {
     e.stopPropagation()
     e.preventDefault()
+    if (!can_start_round || calEvent.temporary) return
     const rect = e.currentTarget.getBoundingClientRect()
     const offsetY = e.clientY - rect.top
-    setDragging({ event: calEvent, offsetY })
+    movedRef.current = false
+    downPosRef.current = { x: e.clientX, y: e.clientY }
+    setDragging({ event: calEvent, offsetY, rect })
+  }
+
+  function handleRemoveEvent(event) {
+    setEvents((evs) => evs.filter((ev) => ev.id !== event.id))
+    if (sendCalendarAction) {
+      sendCalendarAction({action_type: "remove_existing", event_id: event.id, source: "calendar_event_modal"})
+        .catch((err) => { setEvents(calendarEvents.map(mapEvent)); console.error("Failed to remove event:", err) })
+    }
+    setSelectedEvent(null)
+  }
+
+  function handleRescheduleEvent(event, { dayIndex, start, end }) {
+    if (findLocalConflicts(events, event.id, dayIndex, start, end).length) return
+    setEvents((evs) =>
+      evs.map((ev) => (ev.id === event.id ? { ...ev, dayIndex, start, end } : ev))
+    )
+    if (sendCalendarAction) {
+      sendCalendarAction({action_type: "reschedule_existing", event_id: event.id,
+        new_schedule: slotSchedule(visibleDays, dayIndex, start, end), source: "calendar_event_modal"})
+        .catch((err) => { setEvents(calendarEvents.map(mapEvent)); console.error("Failed to reschedule event:", err) })
+    }
+  }
+
+  function handleUseSuggestedTime(event) {
+    const meta = event.metadata || {}
+    if (meta.suggested_start === undefined) return
+    handleRescheduleEvent(event, {
+      dayIndex: meta.suggested_day_index,
+      start: meta.suggested_start,
+      end: meta.suggested_end,
+    })
+    setSelectedEvent(null)
+  }
+
+  function handleRetitleEvent(event, title) {
+    setEvents((evs) => evs.map((ev) => (ev.id === event.id ? { ...ev, title } : ev)))
+    if (sendCalendarAction) {
+      sendCalendarAction({action_type: "modify_existing", event_id: event.id, changes: {title}, source: "calendar_event_modal"}).catch((err) =>
+        console.error("Failed to update event title:", err)
+      )
+    }
   }
 
   function goToday() {
@@ -96,33 +221,10 @@ export default function CalendarPanel() {
     }
   }
 
-  const draggingDuration = dragging
-    ? toMinutes(dragging.event.end) - toMinutes(dragging.event.start)
-    : 0
-
   return (
     <>
-      {dragging && (
-        <div
-          ref={ghostRef}
-          className={`calendar-event-card calendar-event-${dragging.event.tone} calendar-drag-ghost`}
-          style={{
-            position: "fixed",
-            left: "-9999px",
-            top: "-9999px",
-            width: "140px",
-            height: `${(draggingDuration / 60) * ROW_HEIGHT}px`,
-            zIndex: 9999,
-            pointerEvents: "none",
-            opacity: 0.85,
-          }}
-        >
-          <strong>{dragging.event.title}</strong>
-          <span>{formatEventTime(dragging.event.start, dragging.event.end)}</span>
-        </div>
-      )}
-
-      <section className="home-calendar-card">
+      <section className={`home-calendar-card${!can_start_round ? " calendar-onboarding-locked" : ""}`} aria-disabled={!can_start_round}>
+        {calendarActionError && <div className="calendar-action-error" role="status">{calendarActionError.message || String(calendarActionError)}</div>}
         <header className="calendar-topbar">
           <div className="calendar-top-left">
             <div className="calendar-week-nav">
@@ -188,19 +290,16 @@ export default function CalendarPanel() {
                   ))}
 
                   {events
-                    .filter(
-                      (event) =>
-                        event.dayIndex === dayIndex &&
-                        !(dragging && dragging.event.id === event.id)
-                    )
+                    .filter((event) => event.dayIndex === dayIndex)
                     .map((event) => {
+                      const isDragSource = dragging && dragging.event.id === event.id
                       const startMinutes = toMinutes(event.start)
                       const endMinutes = toMinutes(event.end)
                       const duration = endMinutes - startMinutes
                       return (
                         <article
                           key={event.id}
-                          className={`calendar-event-card calendar-event-${event.tone}`}
+                          className={`calendar-event-card calendar-event-${event.tone}${event.isNew ? " calendar-event-new" : ""}${event.invalid ? " calendar-event-invalid" : ""}${isDragSource ? " calendar-event-drag-source" : ""}`}
                           style={{
                             top: `${(startMinutes / 60) * ROW_HEIGHT}px`,
                             height: `${(duration / 60) * ROW_HEIGHT}px`,
@@ -213,12 +312,162 @@ export default function CalendarPanel() {
                         </article>
                       )
                     })}
+
+                  {dragging && dragPreview && dragPreview.dayIndex === dayIndex && (
+                    <div
+                      className={`calendar-event-card calendar-event-${dragging.event.tone} calendar-drag-preview${dragPreview.conflicts.length ? " calendar-event-invalid" : ""}`}
+                      style={{
+                        top: `${(dragPreview.startMinute / 60) * ROW_HEIGHT}px`,
+                        height: `${((dragPreview.endMinute - dragPreview.startMinute) / 60) * ROW_HEIGHT}px`,
+                      }}
+                    >
+                      <strong>{dragging.event.title}</strong>
+                      <span>
+                        {formatEventTime(
+                          minutesToTime(dragPreview.startMinute),
+                          minutesToTime(dragPreview.endMinute)
+                        )}
+                      </span>
+                      {dragPreview.conflicts.length > 0 && <small>Overlaps {dragPreview.conflicts.map(item => item.title).join(", ")}</small>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
         </div>
       </section>
+
+      {selectedEvent &&
+        createPortal(
+          <EventDetailModal
+            event={selectedEvent.event}
+            anchorRect={selectedEvent.rect}
+            onClose={() => setSelectedEvent(null)}
+            onUseSuggestedTime={() => handleUseSuggestedTime(selectedEvent.event)}
+            onRemove={() => handleRemoveEvent(selectedEvent.event)}
+            onRetitle={(title) => handleRetitleEvent(selectedEvent.event, title)}
+            onReschedule={(fields) => handleRescheduleEvent(selectedEvent.event, fields)}
+          />,
+          document.body
+        )}
+    </>
+  )
+}
+
+function EventDetailModal({ event, anchorRect, onClose, onUseSuggestedTime, onRemove, onRetitle, onReschedule }) {
+  const meta = event.metadata || {}
+  const hasSuggestion = meta.suggested_start !== undefined
+
+  const [title, setTitle] = useState(event.title)
+  const [dayIndex, setDayIndex] = useState(event.dayIndex)
+  const [start, setStart] = useState(event.start)
+  const [end, setEnd] = useState(event.end)
+
+  function commitTitle() {
+    if (title.trim() && title !== event.title) onRetitle(title.trim())
+  }
+
+  function updateDayIndex(next) {
+    setDayIndex(next)
+    onReschedule({ dayIndex: next, start, end })
+  }
+
+  function updateStart(next) {
+    setStart(next)
+    onReschedule({ dayIndex, start: next, end })
+  }
+
+  function updateEnd(next) {
+    setEnd(next)
+    onReschedule({ dayIndex, start, end: next })
+  }
+
+  const modalWidth = 300
+  const gap = 14
+  const spaceRight = window.innerWidth - anchorRect.right
+  const openLeft = spaceRight < modalWidth + gap + 20
+  const left = openLeft ? anchorRect.left - modalWidth - gap : anchorRect.right + gap
+  const top = Math.min(
+    Math.max(8, anchorRect.top + anchorRect.height / 2 - 90),
+    window.innerHeight - 260
+  )
+
+  return (
+    <>
+      <div className="event-modal-backdrop" onClick={onClose} />
+      <div className="event-modal" style={{ top, left, width: modalWidth }}>
+        <div className="meeting-field">
+          <label className="meeting-field-label">Title of the meeting</label>
+          <input
+            className="meeting-field-input"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={commitTitle}
+          />
+        </div>
+        <div className="meeting-field-row">
+          <div className="meeting-field meeting-field-date">
+            <label className="meeting-field-label">Date</label>
+            <select
+              className="meeting-field-input meeting-field-select"
+              value={dayIndex}
+              onChange={(e) => updateDayIndex(Number(e.target.value))}
+            >
+              {WEEKDAY_NAMES.map((name, idx) => (
+                <option key={name} value={idx}>{name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="meeting-field">
+            <label className="meeting-field-label">Time</label>
+            <div className="meeting-time-range">
+              <input
+                className="meeting-field-input"
+                type="time"
+                value={start}
+                onChange={(e) => updateStart(e.target.value)}
+              />
+              <span className="meeting-time-sep">–</span>
+              <input
+                className="meeting-field-input"
+                type="time"
+                value={end}
+                onChange={(e) => updateEnd(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+        {hasSuggestion && (
+          <div className="meeting-field">
+            <label className="meeting-field-label">Suggested time</label>
+            <div className="meeting-suggested-row">
+              <input
+                className="meeting-field-input"
+                type="text"
+                value={WEEKDAY_NAMES[meta.suggested_day_index]}
+                disabled
+              />
+              <div className="meeting-time-range">
+                <input className="meeting-field-input" type="text" value={toDisplayTime(meta.suggested_start)} disabled />
+                <span className="meeting-time-sep">–</span>
+                <input className="meeting-field-input" type="text" value={toDisplayTime(meta.suggested_end)} disabled />
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="meeting-decision-row">
+          <button type="button" className="meeting-reject-btn" onClick={onRemove}>
+            Remove
+          </button>
+          {hasSuggestion && (
+            <button type="button" className="meeting-accept-btn" onClick={onUseSuggestedTime}>
+              Update to suggested time →
+            </button>
+          )}
+        </div>
+      </div>
     </>
   )
 }
@@ -227,6 +476,19 @@ function minutesToTime(minutes) {
   const hh = Math.floor(minutes / 60)
   const mm = minutes % 60
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`
+}
+
+function findLocalConflicts(events, eventId, dayIndex, start, end) {
+  const first = toMinutes(start), last = toMinutes(end)
+  if (last <= first) return [{id: "invalid", title: "invalid time range"}]
+  return events.filter(event => event.id !== eventId && !event.temporary && event.blocksTime !== false &&
+    event.dayIndex === dayIndex && first < toMinutes(event.end) && last > toMinutes(event.start))
+}
+
+function slotSchedule(visibleDays, dayIndex, start, end) {
+  const date = visibleDays[dayIndex].date
+  const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+  return {start: `${day}T${start}:00`, end: `${day}T${end}:00`}
 }
 
 function startOfWeekMonday(date) {
@@ -274,7 +536,7 @@ function toDisplayTime(hhmm) {
   const [hh, mm] = hhmm.split(":").map(Number)
   const suffix = hh >= 12 ? "PM" : "AM"
   const hour12 = hh % 12 === 0 ? 12 : hh % 12
-  return `${hour12}:${String(mm).padStart(2, "0")} ${suffix}`
+  return `${hour12}:${String(mm).padStart(2, "0")}${suffix}`
 }
 
 function isSameDate(a, b) {

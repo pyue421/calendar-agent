@@ -1,0 +1,159 @@
+from __future__ import annotations
+
+import re
+import time
+from dataclasses import dataclass
+from typing import Protocol
+
+from google import genai
+from google.genai import types
+
+from ..config import LLMConfig
+from ..models import RationaleObservation
+from ..services.value_taxonomy import VALUE_IDS
+
+
+SYSTEM_PROMPT = """You convert a participant's explanation of one calendar decision into structured evidence.
+This is a reflection intervention, not an assessment of objectively true values.
+
+Use only the participant rationale and the supplied factual decision context. Never infer evidence from an
+assistant message. Do not assign weights, scores, confidence numbers, or psychological traits. Separate external
+constraints from values. Preserve ambiguity and include plausible non-value explanations when warranted.
+
+Allowed value identifiers and participant-facing meanings:
+- wellbeing: health, rest, boundaries, and personal sustainability
+- achievement_growth: progress, mastery, learning, and professional development
+- relationships_care: family, friendship, social support, and community care
+- autonomy_privacy: control over time, independence, focus, and privacy
+- responsibility_fairness: reliability, cooperation, promises, integrity, and fairness
+
+Only return value identifiers from this vocabulary. Quote or closely paraphrase commitments and constraints from
+the participant; do not invent them. Explicit references are directly stated. Implicit references require a clear
+but unstated connection. When evidence is weak, use directness='ambiguous' and alternative_explanations.
+"""
+
+
+class RationaleParserError(RuntimeError):
+    pass
+
+
+class RationaleParserConfigurationError(RationaleParserError):
+    pass
+
+
+class RationaleParserUnavailableError(RationaleParserError):
+    pass
+
+
+@dataclass(frozen=True)
+class ParseResult:
+    observation: RationaleObservation
+    provider: str
+    model: str
+
+
+class RationaleParser(Protocol):
+    def parse(self, text: str, decision_context: dict) -> ParseResult: ...
+
+
+class GeminiRationaleParser:
+    def __init__(self, config: LLMConfig):
+        self.config = config
+
+    def parse(self, text: str, decision_context: dict) -> ParseResult:
+        if not self.config.api_key:
+            raise RationaleParserConfigurationError(
+                "GEMINI_API_KEY is not configured. Add it to backend_v2/.env and restart the backend."
+            )
+        client = genai.Client(api_key=self.config.api_key, http_options=types.HttpOptions(timeout=int(self.config.timeout_seconds * 1000)))
+        prompt = (
+            f"Committed calendar action: {decision_context['action']}\n"
+            f"Candidate schedule: {decision_context.get('candidate_schedule') or 'not applicable'}\n"
+            f"Participant rationale (the only conversational evidence):\n{text}"
+        )
+        for attempt in range(self.config.retry_attempts):
+            try:
+                response = client.models.generate_content(
+                    model=self.config.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        response_mime_type="application/json",
+                        # Pydantic's extra="forbid" emits `additionalProperties: false`.
+                        # Some Gemini generateContent schema versions reject that keyword,
+                        # so send a compatible schema and retain strict validation below.
+                        response_schema=gemini_compatible_schema(RationaleObservation.model_json_schema()),
+                    ),
+                )
+                if not response.text:
+                    raise RationaleParserError("Gemini returned an empty rationale observation.")
+                observation = RationaleObservation.model_validate_json(response.text)
+                return ParseResult(observation=observation, provider="gemini", model=self.config.model)
+            except RationaleParserError:
+                raise
+            except Exception as exc:
+                if not _is_transient_gemini_error(exc):
+                    raise RationaleParserError(f"Gemini rationale parsing failed: {exc}") from exc
+                if attempt + 1 == self.config.retry_attempts:
+                    raise RationaleParserUnavailableError(
+                        f"Gemini remains temporarily unavailable after {self.config.retry_attempts} attempts. "
+                        "Your rationale was not committed; please submit it again shortly."
+                    ) from exc
+                time.sleep(self.config.retry_base_seconds * (2 ** attempt))
+
+
+KEYWORDS = {
+    "wellbeing": ("rest", "health", "wellbeing", "energy", "boundary", "personal time"),
+    "achievement_growth": ("deadline", "finish", "productive", "learn", "growth", "practice", "develop"),
+    "relationships_care": ("family", "friend", "relationship", "community", "care", "support"),
+    "autonomy_privacy": ("choice", "control", "prefer", "focus", "private", "privacy", "independent"),
+    "responsibility_fairness": ("promise", "committed", "reliable", "on time", "team", "collaborate", "fair", "equal", "responsible"),
+}
+
+
+class DeterministicRationaleParser:
+    """Explicit offline/test fallback. Production defaults to Gemini."""
+
+    def parse(self, text: str, decision_context: dict) -> ParseResult:
+        del decision_context
+        lower = text.lower()
+        explicit = [v for v in VALUE_IDS if v.replace("_", " ") in lower]
+        implicit = [v for v, words in KEYWORDS.items() if v not in explicit and any(word in lower for word in words)]
+        constraints = [s.strip() for s in re.split(r"[.;]", text) if any(k in s.lower() for k in ("can't", "cannot", "must", "because", "conflict"))]
+        directness = "explicit" if explicit else "implicit" if implicit else "ambiguous"
+        observation = RationaleObservation(
+            explicit_value_references=explicit, implicit_value_references=implicit,
+            protected_commitments=constraints, compromised_commitments=[], constraints=constraints,
+            alternative_explanations=[] if implicit or explicit else ["The rationale did not map confidently to the fixed vocabulary."],
+            directness=directness,
+        )
+        return ParseResult(observation=observation, provider="deterministic", model="keyword-fallback-v1")
+
+
+def build_rationale_parser(config: LLMConfig) -> RationaleParser:
+    if config.parser == "gemini":
+        return GeminiRationaleParser(config)
+    if config.parser == "deterministic":
+        return DeterministicRationaleParser()
+    raise RationaleParserConfigurationError("RATIONALE_PARSER must be 'gemini' or 'deterministic'.")
+
+
+def gemini_compatible_schema(schema: dict) -> dict:
+    """Remove JSON Schema keywords rejected by Gemini's generateContent schema API."""
+    if isinstance(schema, dict):
+        return {
+            key: gemini_compatible_schema(value)
+            for key, value in schema.items()
+            if key != "additionalProperties"
+        }
+    if isinstance(schema, list):
+        return [gemini_compatible_schema(value) for value in schema]
+    return schema
+
+
+def _is_transient_gemini_error(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    text = str(exc).upper()
+    return status in {429, 500, 502, 503, 504} or any(
+        marker in text for marker in ("RESOURCE_EXHAUSTED", "UNAVAILABLE", "DEADLINE_EXCEEDED")
+    )
