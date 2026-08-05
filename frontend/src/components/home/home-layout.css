@@ -28,8 +28,8 @@
 }
 
 .home-right-column {
-  width: 498px;
-  flex: 0 0 498px;
+  width: 450px;
+  flex: 0 0 450px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid #dee5eb;
@@ -41,15 +41,15 @@
    the extra room instead of just growing the right column proportionally. */
 @media (min-width: 1024px) {
   .home-right-column {
-    width: 440px;
-    flex-basis: 440px;
+    width: 400px;
+    flex-basis: 400px;
   }
 }
 
 @media (min-width: 1280px) {
   .home-right-column {
-    width: 400px;
-    flex-basis: 400px;
+    width: 360px;
+    flex-basis: 360px;
   }
 }
 

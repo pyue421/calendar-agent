@@ -1,6 +1,6 @@
 .chatbot-panel {
-  width: 320px;
-  flex: 0 0 384px;
+  width: 450px;
+  flex: 0 0 450px;
   background: #f8f9fa;
   border-right: 1px solid #dee5eb;
   display: flex;
@@ -9,19 +9,19 @@
   overflow: hidden;
 }
 
-/* Narrow the chatbot column on larger screens so the calendar gets the
-   extra room instead of just growing the side columns proportionally. */
+/* Match the values panel's width at each breakpoint (home-layout.css
+   .home-right-column) so the chatbot and values columns stay the same width. */
 @media (min-width: 1024px) {
   .chatbot-panel {
-    width: 340px;
-    flex-basis: 340px;
+    width: 400px;
+    flex-basis: 400px;
   }
 }
 
 @media (min-width: 1280px) {
   .chatbot-panel {
-    width: 320px;
-    flex-basis: 320px;
+    width: 360px;
+    flex-basis: 360px;
   }
 }
 

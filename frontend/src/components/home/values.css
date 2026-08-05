@@ -1,4 +1,4 @@
-.home-values-card { display: flex; flex-direction: column; min-height: 0; padding: 12px 24px 24px; overflow: hidden; }
+.home-values-card { display: flex; flex-direction: column; min-height: 0; padding: 12px 12px 12px; overflow: hidden; }
 .values-header { align-items: flex-start; margin-bottom: 0; }
 .values-preview-state { color: #68707b; font-size: 11px; padding-top: 2px; }
 .value-bubble-wrap { display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 16px; flex: 1; min-height: 220px; padding: 16px 4px; overflow-y: auto; }
